@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>비트코인 시스템 트레이딩 프로그램 | 마스터 플랜</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet">
+    <!-- Chosen Palette: Warm Neutral Tones -->
+    <!-- Application Structure Plan: A single-page application with a top navigation bar for quick access. The structure is thematic, starting with a high-level Vision, followed by interactive sections for Project Scope (clickable cards), Roadmap (vertical timeline), KPIs (charts), Stakeholders (grid layout), and Risks (accordion). This task-oriented, non-linear structure allows stakeholders to quickly jump to the information they need, enhancing usability and comprehension of the strategic plan. -->
+    <!-- Visualization & Content Choices: 
+        - Vision: (Goal: Inform) - Presented in a hero section with strong typography to establish the project's core purpose.
+        - Project Scope: (Goal: Organize/Inform) - Interactive cards (HTML/CSS/JS) for each feature. This encourages exploration without overwhelming the user.
+        - Roadmap: (Goal: Change/Organize) - A vertical timeline (HTML/CSS/JS) visually represents the project's progression, which is more engaging than a simple list.
+        - KPIs: (Goal: Inform/Compare) - Donut charts (Chart.js) are used to visually represent key success metrics, making abstract targets tangible and easy to grasp.
+        - Risks: (Goal: Organize/Inform) - An accordion (HTML/CSS/JS) neatly organizes complex risk information, allowing users to focus on one category at a time.
+        - Justification: These choices transform a static document into an interactive dashboard, making the strategic information more accessible, digestible, and engaging for all stakeholders.
+    -->
+    <!-- CONFIRMATION: NO SVG graphics used. NO Mermaid JS used. -->
+    <style>
+        body {
+            font-family: 'Noto Sans KR', 'Inter', sans-serif;
+            background-color: #f8fafc; /* Tailwind's gray-50 */
+        }
+        .chart-container {
+            position: relative;
+            width: 100%;
+            max-width: 320px;
+            height: 320px;
+            margin: auto;
+        }
+        .section-title {
+            font-size: 2.25rem;
+            font-weight: 700;
+            color: #1f2937; /* Tailwind's gray-800 */
+            margin-bottom: 1rem;
+        }
+        .section-subtitle {
+            font-size: 1.125rem;
+            color: #4b5563; /* Tailwind's gray-600 */
+            max-width: 800px;
+            margin: 0 auto 3rem auto;
+        }
+        .smooth-scroll {
+            scroll-behavior: smooth;
+        }
+        .timeline-item::before {
+            content: '';
+            position: absolute;
+            left: -31px;
+            top: 0;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background-color: white;
+            border: 4px solid #3b82f6; /* Tailwind's blue-500 */
+        }
+        .accordion-content {
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.3s ease-out;
+        }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800 smooth-scroll">
+
+    <!-- Header & Navigation -->
+    <header class="bg-white/80 backdrop-blur-lg sticky top-0 z-50 shadow-sm">
+        <nav class="container mx-auto px-6 py-3 flex justify-between items-center">
+            <div class="font-bold text-xl text-slate-900">프로젝트 마스터 플랜</div>
+            <div class="hidden md:flex space-x-8">
+                <a href="#vision" class="text-slate-600 hover:text-blue-600 transition">비전</a>
+                <a href="#scope" class="text-slate-600 hover:text-blue-600 transition">프로젝트 범위</a>
+                <a href="#roadmap" class="text-slate-600 hover:text-blue-600 transition">로드맵</a>
+                <a href="#kpis" class="text-slate-600 hover:text-blue-600 transition">성공 지표</a>
+                <a href="#risks" class="text-slate-600 hover:text-blue-600 transition">리스크 관리</a>
+            </div>
+        </nav>
+    </header>
+
+    <main class="container mx-auto px-6 py-12">
+
+        <!-- Vision Section -->
+        <section id="vision" class="text-center py-20">
+            <h1 class="text-5xl md:text-6xl font-extrabold text-slate-900 mb-6 leading-tight">
+                데이터 기반의 합리적 투자, <br class="hidden md:block" />
+                <span class="text-blue-600">자동 트레이딩 솔루션</span>
+            </h1>
+            <p class="text-lg text-slate-600 max-w-3xl mx-auto">
+                개인 투자자가 복잡한 금융 시장에서 감정적 개입 없이 데이터 기반의 합리적인 투자 결정을 내릴 수 있도록 지원하는, 가장 신뢰할 수 있고 유연하며 강력한 비트코인 자동 트레이딩 솔루션을 제공합니다.
+            </p>
+        </section>
+
+        <!-- Project Scope Section -->
+        <section id="scope" class="py-20">
+            <div class="text-center">
+                <h2 class="section-title">프로젝트 범위</h2>
+                <p class="section-subtitle">
+                    본 프로젝트는 비트코인 시스템 트레이딩 프로그램의 핵심 기능 개발에 초점을 맞춥니다. 각 기능은 사용자의 투자 효율성과 편의성을 극대화하도록 설계되었습니다. 아래 카드를 클릭하여 각 기능의 상세 내용을 확인하세요.
+                </p>
+            </div>
+            <div id="scope-cards" class="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
+                <!-- Scope cards will be injected by JavaScript -->
+            </div>
+        </section>
+
+        <!-- Roadmap Section -->
+        <section id="roadmap" class="py-20">
+            <div class="text-center">
+                <h2 class="section-title">초기 로드맵 (MVP)</h2>
+                <p class="section-subtitle">
+                    프로젝트는 3단계의 명확한 로드맵에 따라 진행됩니다. 각 단계는 핵심 기능을 점진적으로 개발하고 안정화하여, 최종적으로 완성도 높은 최소 기능 제품(MVP)을 출시하는 것을 목표로 합니다.
+                </p>
+            </div>
+            <div class="relative max-w-2xl mx-auto">
+                <div class="border-l-2 border-blue-200 absolute h-full left-0 top-0 ml-[-1px]"></div>
+                <div id="roadmap-timeline" class="space-y-12">
+                     <!-- Roadmap items will be injected by JavaScript -->
+                </div>
+            </div>
+        </section>
+
+        <!-- KPIs Section -->
+        <section id="kpis" class="py-20 bg-white rounded-2xl shadow-lg my-20">
+            <div class="text-center">
+                <h2 class="section-title">핵심 성공 지표 (KPIs)</h2>
+                <p class="section-subtitle">
+                    프로젝트의 성공은 명확하고 측정 가능한 지표들을 통해 평가됩니다. 이 KPI들은 사용자 활성화, 시스템 안정성, 그리고 궁극적으로 사용자 만족도를 반영합니다.
+                </p>
+            </div>
+            <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-12 text-center">
+                <div>
+                    <div class="chart-container"><canvas id="kpiChart1"></canvas></div>
+                    <h3 class="text-xl font-bold mt-4">사용자 활성화</h3>
+                    <p class="text-slate-500">월간 활성 사용자(MAU)</p>
+                </div>
+                <div>
+                    <div class="chart-container"><canvas id="kpiChart2"></canvas></div>
+                    <h3 class="text-xl font-bold mt-4">시스템 안정성</h3>
+                    <p class="text-slate-500">시스템 가동 시간 (Uptime)</p>
+                </div>
+                <div>
+                    <div class="chart-container"><canvas id="kpiChart3"></canvas></div>
+                    <h3 class="text-xl font-bold mt-4">사용자 만족도</h3>
+                    <p class="text-slate-500">NPS (Net Promoter Score)</p>
+                </div>
+            </div>
+        </section>
+        
+        <!-- Risk Management Section -->
+        <section id="risks" class="py-20">
+            <div class="text-center">
+                <h2 class="section-title">리스크 관리</h2>
+                <p class="section-subtitle">
+                    성공적인 프로젝트 완수를 위해 잠재적 리스크를 사전에 식별하고 체계적인 완화 전략을 수립합니다. 각 리스크 항목을 클릭하여 상세 전략을 확인하세요.
+                </p>
+            </div>
+            <div id="risk-accordion" class="max-w-4xl mx-auto space-y-4">
+                <!-- Risk accordion items will be injected by JavaScript -->
+            </div>
+        </section>
+
+    </main>
+
+    <footer class="bg-slate-800 text-white mt-20">
+        <div class="container mx-auto px-6 py-8 text-center">
+            <p>&copy; 2025 비트코인 시스템 트레이딩 프로젝트. All Rights Reserved.</p>
+            <p class="text-sm text-slate-400 mt-2">본 문서는 프로젝트 계획을 설명하기 위한 목적으로 제작되었습니다.</p>
+        </div>
+    </footer>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            
+            // --- Data ---
+            const scopeData = [
+                { title: '전략 개발 및 관리', content: '사전 정의된 전략, 사용자 정의 파이썬 스크립트, AI/ML 모델 학습 인터페이스를 제공하여 높은 자유도를 보장합니다.' },
+                { title: '백테스팅 및 시뮬레이션', content: '과거 데이터 기반의 정밀한 시뮬레이션을 통해 전략의 유효성을 검증하고 성과 지표를 시각적으로 분석합니다.' },
+                { title: '실시간 트레이딩 실행', content: '주요 암호화폐 거래소와의 안정적인 API 연동으로 자동화된 매수/매도 주문을 실행하고 실시간으로 포지션을 관리합니다.' },
+                { title: '성과 모니터링 및 알림', content: '실시간 대시보드를 통해 전략과 자산 현황을 모니터링하고, 주요 이벤트 발생 시 사용자에게 즉시 알림을 제공합니다.' },
+                { title: '자금 및 리스크 관리', content: '전략별 자금 할당, Stop Loss/Take Profit 설정 등 강력한 리스크 관리 기능으로 사용자의 자산을 보호합니다.' },
+                { title: '핵심 가치', content: '유연성, 투명성, 안정성, 사용자 중심, 확장성을 핵심 가치로 삼아 최고의 사용자 경험을 제공합니다.' }
+            ];
+
+            const roadmapData = [
+                { phase: 'Phase 1a', title: '핵심 기능 개발', content: '단일 거래소 연동, 기본 백테스팅 기능 구현, 실시간 주문 실행 모듈 개발 및 최소 기능의 UI를 구축합니다.' },
+                { phase: 'Phase 1b', title: '사용자 정의 전략 및 리스크 관리', content: '파이썬 기반 사용자 전략 실행 환경을 구축하고, Stop Loss/Take Profit 등 핵심 리스크 관리 기능을 추가하며 UI/UX를 개선합니다.' },
+                { phase: 'Phase 1c', title: '시스템 안정화 및 테스트', content: '성능 최적화, 버그 수정, 보안 강화를 통해 시스템의 안정성을 확보하고, 종합 테스트를 통해 최종 MVP의 완성도를 높입니다.' }
+            ];
+
+            const riskData = [
+                { title: '기술적 리스크', content: '복잡한 시스템 통합, 고성능 요구, 보안 취약점. <br><b>완화 전략:</b> 모듈화된 아키텍처, 철저한 코드 리뷰, 자동화된 테스트, 보안 전문가 자문.' },
+                { title: '시장 리스크', content: '암호화폐 시장의 높은 변동성, 예상치 못한 급락. <br><b>완화 전략:</b> 강력한 리스크 관리 기능(SL/TP), 사용자에게 시장 위험 고지, 시뮬레이션 기능 강화.' },
+                { title: '규제 리스크', content: '암호화폐 관련 법규 변화. <br><b>완화 전략:</b> 법률 전문가 자문, 지속적인 규제 동향 모니터링, 유연한 시스템 설계.' },
+                { title: '운영 리스크', content: '24/7 시스템 운영의 복잡성, 장애 발생. <br><b>완화 전략:</b> 자동화된 배포 및 모니터링, 장애 복구 계획(DRP), 전문 DevOps 팀 구성.' }
+            ];
+
+            // --- UI Injection ---
+            const scopeContainer = document.getElementById('scope-cards');
+            scopeData.forEach(item => {
+                const card = document.createElement('div');
+                card.className = 'bg-white p-8 rounded-xl shadow-lg hover:shadow-xl hover:-translate-y-2 transition-all duration-300 cursor-pointer';
+                card.innerHTML = `
+                    <h3 class="text-2xl font-bold text-slate-900 mb-3">${item.title}</h3>
+                    <p class="text-slate-600">${item.content}</p>
+                `;
+                scopeContainer.appendChild(card);
+            });
+
+            const timelineContainer = document.getElementById('roadmap-timeline');
+            roadmapData.forEach(item => {
+                const timelineItem = document.createElement('div');
+                timelineItem.className = 'relative pl-8 timeline-item';
+                timelineItem.innerHTML = `
+                    <div class="bg-white p-6 rounded-xl shadow-md">
+                        <span class="text-sm font-semibold text-blue-600">${item.phase}</span>
+                        <h3 class="text-xl font-bold mt-1">${item.title}</h3>
+                        <p class="text-slate-600 mt-2">${item.content}</p>
+                    </div>
+                `;
+                timelineContainer.appendChild(timelineItem);
+            });
+
+            const accordionContainer = document.getElementById('risk-accordion');
+            riskData.forEach(item => {
+                const accordionItem = document.createElement('div');
+                accordionItem.className = 'bg-white rounded-lg shadow-md overflow-hidden';
+                accordionItem.innerHTML = `
+                    <button class="accordion-toggle w-full text-left p-5 font-bold text-lg flex justify-between items-center hover:bg-slate-50 transition">
+                        <span>${item.title}</span>
+                        <span class="transform transition-transform duration-300">&#9662;</span>
+                    </button>
+                    <div class="accordion-content">
+                        <div class="p-5 pt-0 text-slate-600">${item.content}</div>
+                    </div>
+                `;
+                accordionContainer.appendChild(accordionItem);
+            });
+
+            // --- Interactivity ---
+            document.querySelectorAll('.accordion-toggle').forEach(button => {
+                button.addEventListener('click', () => {
+                    const content = button.nextElementSibling;
+                    const icon = button.querySelector('span:last-child');
+                    
+                    if (content.style.maxHeight) {
+                        content.style.maxHeight = null;
+                        icon.style.transform = 'rotate(0deg)';
+                    } else {
+                        content.style.maxHeight = content.scrollHeight + 'px';
+                        icon.style.transform = 'rotate(180deg)';
+                    }
+                });
+            });
+
+            // --- Chart.js ---
+            const createKpiChart = (ctx, label, data, color) => {
+                new Chart(ctx, {
+                    type: 'doughnut',
+                    data: {
+                        labels: [label, ''],
+                        datasets: [{
+                            data: data,
+                            backgroundColor: [color, '#e2e8f0'],
+                            borderColor: ['#ffffff'],
+                            borderWidth: 4,
+                            cutout: '80%',
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: { display: false },
+                            tooltip: { enabled: false }
+                        }
+                    }
+                });
+            };
+
+            createKpiChart(document.getElementById('kpiChart1').getContext('2d'), 'MAU', [85, 15], '#3b82f6'); // Blue
+            createKpiChart(document.getElementById('kpiChart2').getContext('2d'), 'Uptime', [99.9, 0.1], '#10b981'); // Green
+            createKpiChart(document.getElementById('kpiChart3').getContext('2d'), 'NPS', [75, 25], '#f59e0b'); // Amber
+
+        });
+    </script>
+</body>
+</html>
