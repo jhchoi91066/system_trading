@@ -1,0 +1,251 @@
+비트코인 시스템 트레이딩 프로그램: 구현 계획서
+1. 기술 아키텍처 상세
+
+본 시스템은 마이크로 서비스 아키텍처를 기반으로 설계되며, 각 서비스는 독립적으로 배포 및 확장 가능합니다.
+
+1.1. 백엔드 서비스
+
+API Gateway (FastAPI/Nginx):
+
+모든 외부 요청의 단일 진입점.
+
+인증/인가 처리, 로드 밸런싱, 라우팅.
+
+WebSocket 연결 관리.
+
+Data Ingestion Service (Python + asyncio):
+
+주요 거래소(Binance, Upbit 등)의 WebSocket API를 통해 실시간 시세 데이터(호가, 체결가) 수집.
+
+REST API를 통해 과거 데이터(OHLCV) 수집.
+
+수집된 데이터를 Kafka(메시지 큐)와 InfluxDB/TimescaleDB(시계열 DB)에 저장.
+
+데이터 정제 및 표준화.
+
+Strategy Management Service (Python + FastAPI):
+
+사용자 정의 전략 코드(Python 스크립트) 업로드 및 관리.
+
+사전 정의된 전략 템플릿 제공 및 파라미터 설정.
+
+AI/ML 모델 학습을 위한 데이터 전처리 및 모델 저장/로드 기능.
+
+전략 메타데이터(이름, 설명, 파라미터)를 PostgreSQL에 저장.
+
+Backtesting Service (Python + Pandas/NumPy):
+
+InfluxDB/TimescaleDB에서 과거 시세 데이터 조회.
+
+사용자 선택 전략을 과거 데이터에 적용하여 시뮬레이션.
+
+백테스팅 결과(수익률, MDD, 승률, 샤프 비율 등) 계산 및 PostgreSQL에 저장.
+
+결과 데이터(거래 내역, 포지션 변화)를 프론트엔드로 전송.
+
+Trading Execution Service (Python + FastAPI + ccxt):
+
+사용자 활성화 전략을 Celery Workers를 통해 비동기적으로 실행.
+
+ccxt 라이브러리를 사용하여 거래소 API(주문, 잔고 조회, 취소)와 통신.
+
+주문 체결, 포지션 변화 등 실시간 거래 이벤트를 Kafka로 발행.
+
+자금 관리 및 리스크 관리 로직(Stop Loss, Take Profit, 포지션 규모 제한) 구현.
+
+거래 내역, 주문 상태, 잔고 정보 등을 PostgreSQL에 저장.
+
+Notification Service (Python + Celery):
+
+Kafka에서 발행된 특정 이벤트(큰 손실, 목표 수익 달성, 주문 실패 등) 구독.
+
+이메일, SMS, 푸시 알림 발송.
+
+알림 설정 및 이력 관리.
+
+Auth Service (Python + FastAPI):
+
+사용자 회원가입, 로그인, 토큰 기반 인증(JWT).
+
+사용자 정보 및 권한 관리.
+
+1.2. 데이터베이스
+
+PostgreSQL:
+
+사용자 정보, 전략 메타데이터, 거래 내역, 주문 상태, 잔고 정보, 백테스팅 결과 요약.
+
+관계형 데이터의 정합성과 복잡한 쿼리에 강점.
+
+InfluxDB / TimescaleDB:
+
+고성능 시계열 데이터 저장 및 쿼리.
+
+과거 비트코인 OHLCV, 호가 데이터, 체결 데이터.
+
+백테스팅 및 AI/ML 학습 데이터 소스.
+
+Redis:
+
+세션 관리, 캐싱 (실시간 잔고, 최근 시세), 분산 락.
+
+Celery의 브로커 및 결과 백엔드.
+
+1.3. 프론트엔드
+
+React: SPA(Single Page Application) 개발.
+
+State Management: React Context API 또는 Zustand.
+
+Data Visualization: Plotly.js 또는 Chart.js for interactive charts and dashboards.
+
+Styling: Tailwind CSS for rapid and responsive UI development.
+
+Icons: Lucide React for modern, consistent icons.
+
+1.4. 인프라 및 배포
+
+클라우드 플랫폼: AWS (EC2, RDS, ElastiCache, S3, EKS, CloudWatch).
+
+컨테이너 오케스트레이션: Kubernetes (EKS)를 사용하여 마이크로 서비스 배포, 스케일링, 관리.
+
+CI/CD: GitHub Actions 또는 GitLab CI/CD를 사용하여 자동화된 테스트, 빌드, 배포.
+
+모니터링: Prometheus & Grafana (시스템 지표), ELK Stack (로그 관리).
+
+2. 개발 단계 및 타임라인 (Phase 1 - MVP)
+
+총 개발 기간: 5개월
+
+2.1. Phase 1a: 핵심 인프라 및 데이터 파이프라인 (1.5개월)
+
+인프라:
+
+AWS 계정 설정, VPC, 보안 그룹 구성.
+
+Kubernetes 클러스터 초기 구성.
+
+PostgreSQL, InfluxDB/TimescaleDB, Redis 인스턴스 프로비저닝.
+
+데이터 수집:
+
+Data Ingestion Service 개발 (단일 거래소 WebSocket/REST API 연동).
+
+수집된 데이터 InfluxDB/TimescaleDB에 저장 확인.
+
+인증/인가:
+
+Auth Service 개발 (사용자 회원가입, 로그인, JWT 발급/검증).
+
+API Gateway:
+
+기본 라우팅 및 인증 미들웨어 구현.
+
+프론트엔드:
+
+기본 프로젝트 구조 설정, 로그인/회원가입 페이지.
+
+2.2. Phase 1b: 백테스팅 및 기본 트레이딩 엔진 (2개월)
+
+Strategy Management Service:
+
+사전 정의된 전략 템플릿 구현.
+
+사용자 정의 전략 코드 업로드 및 저장 기능.
+
+Backtesting Service:
+
+InfluxDB/TimescaleDB에서 데이터 조회 로직 구현.
+
+선택된 전략에 대한 백테스팅 로직 구현 (단순 수익률, MDD 계산).
+
+백테스팅 결과 저장 및 조회 API 개발.
+
+Trading Execution Service:
+
+ccxt를 이용한 거래소 API 연동 (매수/매도 주문, 잔고 조회).
+
+기본적인 주문 실행 로직.
+
+실시간 잔고 및 포지션 업데이트.
+
+프론트엔드:
+
+전략 목록 및 상세 페이지.
+
+백테스팅 실행 및 결과 시각화 (기본 차트).
+
+실시간 잔고 및 포지션 대시보드.
+
+2.3. Phase 1c: 사용자 정의 전략 실행 및 리스크 관리, 안정화 (1.5개월)
+
+Strategy Management Service:
+
+사용자 정의 파이썬 전략을 안전하게 실행할 수 있는 샌드박스 환경 (Docker 컨테이너) 통합.
+
+Trading Execution Service:
+
+Stop Loss, Take Profit 로직 구현.
+
+전략별 자금 할당 및 포지션 규모 제한.
+
+Notification Service:
+
+Kafka 연동 및 주요 이벤트(주문 체결, SL/TP 도달, 에러) 알림 발송 (이메일).
+
+프론트엔드:
+
+사용자 정의 전략 업로드 UI.
+
+리스크 관리 설정 UI.
+
+알림 설정 및 알림 내역 페이지.
+
+시스템 안정화:
+
+모든 서비스에 대한 단위 테스트, 통합 테스트, API 테스트 코드 작성.
+
+성능 테스트 및 병목 현상 최적화.
+
+보안 취약점 점검 및 강화.
+
+로깅 및 모니터링 시스템 구축 (Prometheus, Grafana, ELK).
+
+3. 개발 표준 및 프로세스
+
+코드 컨벤션: Python PEP 8, JavaScript Standard Style.
+
+버전 관리: Git (GitHub/GitLab), Git Flow 브랜칭 전략.
+
+코드 리뷰: 모든 코드 변경은 최소 2인 이상의 코드 리뷰를 거쳐야 함.
+
+테스트: 단위 테스트, 통합 테스트, E2E 테스트 의무화.
+
+문서화: API 문서(Swagger/OpenAPI), 시스템 설계 문서, 사용자 가이드.
+
+애자일 방법론: 스크럼(Scrum) 기반의 스프린트(2주) 운영, 일일 스탠드업 미팅, 스프린트 리뷰/회고.
+
+4. 위험 관리 및 완화 계획
+
+데이터 무결성 및 유실:
+
+완화: DB 이중화, 정기적인 백업, 트랜잭션 관리, 메시지 큐를 통한 데이터 일관성 유지.
+
+거래소 API 변경/장애:
+
+완화: ccxt 라이브러리 활용(업데이트 용이), 다중 거래소 연동 고려, API 장애 감지 및 대체 로직.
+
+사용자 전략의 위험성:
+
+완화: 샌드박스 환경에서 코드 실행, 리소스 제한, 잠재적 위험 코드 검토, 사용자에게 책임 고지.
+
+성능 병목:
+
+완화: 분산 시스템 설계, 캐싱 전략, 비동기 프로그래밍, 지속적인 성능 모니터링 및 튜닝.
+
+보안 취약점:
+
+완화: OWASP Top 10 준수, 정기적인 보안 감사, 민감 정보 암호화, 최소 권한 원칙.
+
+본 구현 계획서는 프로젝트의 기술적 기반과 개발 과정을 명확히 정의합니다. 각 팀은 이 계획에 따라 개발을 진행하며, 주기적인 검토와 조정을 통해 목표를 달성할 것입니다.
+
