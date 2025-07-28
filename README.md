@@ -1,72 +1,59 @@
-# 비트코인 자동매매 시스템
+# Bitcoin Trading Bot
 
-## 1. 프로젝트 개요
+This project is a cryptocurrency trading bot that uses real-time data to make trading decisions.
 
-본 프로젝트는 암호화폐 거래소의 API를 활용하여 지정된 매매 전략에 따라 비트코인을 자동으로 거래하는 시스템을 구축하는 것을 목표로 합니다. 데이터 수집 및 관리는 Supabase를 활용하여 개발 효율성과 확장성을 높이고, 모든 매매 로직은 Python으로 구현합니다.
+## Features Implemented
 
-## 2. 핵심 기능
+### Backend (FastAPI)
+- **List available exchanges:** `/exchanges` endpoint to list all supported cryptocurrency exchanges.
+- **Fetch real-time data:** `/ticker/{exchange_id}/{symbol}` endpoint to fetch real-time ticker data.
+- **Fetch historical OHLCV data:** `/ohlcv/{exchange_id}/{symbol}` endpoint to fetch historical candlestick data.
+- **CCI Calculation:** Implemented CCI (Commodity Channel Index) calculation.
+- **CCI Signal Generation:** Implemented logic to generate buy/sell signals based on CCI thresholds.
+- **Backtesting Strategy:** `/backtest/{exchange_id}/{symbol}` endpoint to run backtests on historical data using the CCI strategy.
 
-*   **전략 관리:** 사전 정의된 전략 및 사용자 정의 Python 스크립트 기반 전략 생성 및 관리
-*   **백테스팅:** 과거 데이터를 기반으로 전략의 성과를 검증하고 시각화
-*   **실시간 매매:** 검증된 전략을 실제 거래소에 연동하여 자동으로 매매 실행
-*   **모니터링:** 실시간 대시보드를 통해 자산 현황, 수익률, 거래 내역 등 모니터링
-*   **알림:** 주요 이벤트 발생 시 이메일, 텔레그램 등 알림 수신
+### Frontend (Next.js Dashboard)
+- Displays a list of available exchanges.
+- Displays real-time ticker data for a selected symbol (e.g., BTC/USDT).
+- Provides a UI to configure and run backtests with various parameters (exchange, symbol, timeframe, CCI window, buy/sell thresholds, initial capital, commission).
+- Displays detailed backtest results including initial/final capital, profit/loss, and a list of executed trades.
 
-## 3. 기술 스택
+## How to Run the Application
 
-*   **언어:** Python
-*   **데이터베이스:** Supabase (PostgreSQL)
-*   **라이브러리:**
-    *   `ccxt`: 암호화폐 거래소 API 연동
-    *   `pandas`: 데이터 분석 및 처리
-    *   `apscheduler`: 스케줄링
-    *   `fastapi`: API 서버
-    *   `uvicorn`: ASGI 서버
-*   **기타:**
-    *   `git`: 버전 관리
-    *   `GitHub`: 원격 저장소
+To run this application, you will need two separate terminal windows.
 
-## 4. 개발 로드맵
+### 1. Start the Backend Server
 
-### 1단계: 프로젝트 설정 및 데이터 수집 (1~2주)
+In the first terminal, navigate to the `backend` directory and start the FastAPI server:
 
-*   프로젝트 초기화 (git, .gitignore, README.md)
-*   가상환경 설정 및 라이브러리 설치
-*   Supabase 프로젝트 및 테이블 생성
-*   데이터 수집 및 저장 기능 구현
+```bash
+cd /Users/jinhochoi/Desktop/개발/bitcoin-trading-bot/backend
+source ../venv/bin/activate
+uvicorn main:app --reload
+```
 
-### 2단계: 매매 전략 구현 및 백테스팅 (2~3주)
+Leave this terminal running. The server will be accessible at `http://127.0.0.1:8000`.
 
-*   데이터 분석 및 매매 전략 수립
-*   백테스팅 엔진 개발
-*   전략 최적화
+### 2. Start the Frontend Dashboard
 
-### 3단계: 실시간 매매 및 모니터링 (2~3주)
+In the second terminal, navigate to the `frontend-dashboard` directory and start the Next.js development server:
 
-*   실시간 매매 기능 구현
-*   리스크 관리 및 예외 처리
-*   모니터링 대시보드 개발
+```bash
+cd /Users/jinhochoi/Desktop/개발/bitcoin-trading-bot/frontend-dashboard
+npm install # Run this only once to install dependencies
+npm run dev
+```
 
-### 4단계: 배포 및 유지보수 (1~2주)
+Leave this terminal running. The frontend will be accessible at `http://localhost:3000`.
 
-*   Docker를 이용한 컨테이너화
-*   클라우드 서비스에 배포
-*   CI/CD 파이프라인 구축
-*   정기적인 모니터링 및 유지보수
+### 3. Access the Application
 
-## 5. 사용 방법
+Open your web browser and go to `http://localhost:3000`. You should see the Crypto Data Dashboard with real-time data and the backtesting interface.
 
-1.  **회원가입 및 로그인:** 이메일과 비밀번호로 간편하게 회원가입 및 로그인
-2.  **API 연동:** 사용하시는 거래소의 API 키를 등록하여 연동
-3.  **전략 생성:** 사전 정의된 전략 또는 사용자 정의 Python 스크립트로 전략 생성
-4.  **백테스팅:** 생성한 전략을 과거 데이터로 검증
-5.  **실시간 매매:** 검증된 전략을 실제 거래소에 연동하여 자동매매 시작
-6.  **모니터링:** 대시보드를 통해 실시간 현황 모니터링
+## CCI Trading Strategy
 
-## 6. 기여 방법
+The implemented strategy is based on the Commodity Channel Index (CCI). It generates:
+- **Buy Signal:** When CCI crosses above the `buy_threshold` (default +100).
+- **Sell Signal:** When CCI crosses below the `sell_threshold` (default -100).
 
-본 프로젝트는 오픈소스로 진행되며, 누구나 기여할 수 있습니다. 자세한 내용은 `CONTRIBUTING.md` 파일을 참고해주세요.
-
-## 7. 라이선스
-
-본 프로젝트는 MIT 라이선스를 따릅니다.
+Backtesting parameters can be adjusted directly from the frontend dashboard.

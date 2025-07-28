@@ -42,6 +42,10 @@ export default function RootLayout({
               <SignUpButton />
             </SignedOut>
             <SignedIn>
+              <nav className="flex items-center space-x-4">
+                <a href="/" className="text-white">Home</a>
+                <a href="/strategies" className="text-white">Strategies</a>
+              </nav>
               <UserButton />
             </SignedIn>
           </header>
