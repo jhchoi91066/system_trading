@@ -99,4 +99,3 @@
 1.  **Supabase API 키 문제**: 백엔드에서 Supabase와 통신 시 `Invalid API key` 오류가 발생하여 `/strategies` 엔드포인트 등 Supabase를 사용하는 기능들이 `500 Internal Server Error`를 반환하고 있습니다. `.env` 파일의 `SUPABASE_KEY`를 Supabase 프로젝트 대시보드에서 복사한 올바른 `anon public` 키로 업데이트해야 합니다.
 2.  **WebSocket `control frame too long` 오류**: `uvicorn` 실행 시 `max_size` 옵션을 설정했음에도 불구하고 WebSocket 연결 시 `control frame too long` 오류가 계속 발생하고 있습니다. 이는 WebSocket 초기 인증 메시지의 크기가 너무 크거나, `uvicorn`의 `websockets` 백엔드 처리 방식에 문제가 있을 수 있습니다. 추가적인 조사가 필요합니다.
 
-*Git 설정 테스트용 문구: 이 커밋이 올바른 사용자로 표시되는지 확인해주세요.*
