@@ -1,9 +1,678 @@
+"use client";
+
+import { useState, useEffect } from 'react';
+
 export default function StrategiesPage() {
+  const [strategies, setStrategies] = useState<any[]>([]);
+  const [activeStrategies, setActiveStrategies] = useState<any[]>([]);
+  const [exchanges, setExchanges] = useState<string[]>([]);
+  const [symbols, setSymbols] = useState<string[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  
+  // Form states
+  const [showActivateForm, setShowActivateForm] = useState(false);
+  const [showCreateForm, setShowCreateForm] = useState(false);
+  const [selectedStrategy, setSelectedStrategy] = useState<any>(null);
+  const [activateForm, setActivateForm] = useState({
+    exchange_name: 'binance',
+    symbol: 'BTC/USDT',
+    allocated_capital: 1000,
+    stop_loss_percentage: 5.0,
+    take_profit_percentage: 10.0,
+    max_position_size: 0.1, // Maximum position size as percentage of capital
+    risk_per_trade: 2.0, // Risk per trade as percentage
+    daily_loss_limit: 5.0 // Daily loss limit as percentage
+  });
+  
+  // Create strategy form
+  const [createForm, setCreateForm] = useState({
+    name: '',
+    description: '',
+    strategy_type: 'custom',
+    parameters: {
+      indicator: 'CCI',
+      window: 20,
+      buy_threshold: -100,
+      sell_threshold: 100,
+      timeframe: '1h'
+    },
+    script: ''
+  });
+  
+  // Portfolio allocation tracking
+  const [portfolioStats, setPortfolioStats] = useState({
+    total_allocated: 0,
+    available_capital: 10000, // This would come from user settings
+    active_positions: 0,
+    daily_pnl: 0
+  });
+
+  useEffect(() => {
+    fetchStrategies();
+    fetchActiveStrategies();
+    fetchExchanges();
+    fetchPortfolioStats();
+  }, []);
+  
+  const fetchPortfolioStats = async () => {
+    try {
+      const response = await fetch('http://127.0.0.1:8000/portfolio/stats');
+      if (!response.ok) throw new Error('Failed to fetch portfolio stats');
+      const data = await response.json();
+      setPortfolioStats(prev => ({
+        ...prev,
+        total_allocated: data.total_allocated,
+        available_capital: data.available_capital,
+        active_positions: data.active_strategies
+      }));
+    } catch (e: any) {
+      console.error('Failed to fetch portfolio stats:', e.message);
+    }
+  };
+
+  useEffect(() => {
+    if (activateForm.exchange_name) {
+      fetchSymbols(activateForm.exchange_name);
+    }
+  }, [activateForm.exchange_name]);
+
+  const fetchStrategies = async () => {
+    try {
+      const response = await fetch('http://127.0.0.1:8000/strategies');
+      if (!response.ok) throw new Error('Failed to fetch strategies');
+      const data = await response.json();
+      setStrategies(data);
+    } catch (e: any) {
+      setError(`Failed to fetch strategies: ${e.message}`);
+    }
+  };
+  
+  const createStrategy = async () => {
+    if (!createForm.name || !createForm.description) {
+      setError('Please fill in all required fields');
+      return;
+    }
+    
+    setLoading(true);
+    try {
+      // Generate strategy script based on parameters
+      const strategyScript = generateStrategyScript(createForm.parameters);
+      
+      const response = await fetch('http://127.0.0.1:8000/strategies', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: createForm.name,
+          script: createForm.script || strategyScript,
+          description: createForm.description,
+          strategy_type: createForm.strategy_type,
+          parameters: createForm.parameters
+        })
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.detail || 'Failed to create strategy');
+      }
+      
+      const data = await response.json();
+      alert(`Strategy "${createForm.name}" created successfully!`);
+      setShowCreateForm(false);
+      setCreateForm({
+        name: '',
+        description: '',
+        strategy_type: 'custom',
+        parameters: {
+          indicator: 'CCI',
+          window: 20,
+          buy_threshold: -100,
+          sell_threshold: 100,
+          timeframe: '1h'
+        },
+        script: ''
+      });
+      fetchStrategies();
+    } catch (e: any) {
+      setError(`Failed to create strategy: ${e.message}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+  
+  const generateStrategyScript = (params: any) => {
+    return `
+# Auto-generated ${params.indicator} Strategy
+def strategy_logic(data, params):
+    """${params.indicator} based trading strategy"""
+    import pandas as pd
+    import numpy as np
+    
+    # Calculate ${params.indicator} indicator
+    window = params.get('window', ${params.window})
+    buy_threshold = params.get('buy_threshold', ${params.buy_threshold})
+    sell_threshold = params.get('sell_threshold', ${params.sell_threshold})
+    
+    # Your strategy logic here
+    signals = []
+    # Add your trading logic
+    
+    return signals
+`;
+  };
+  
+  const calculatePortfolioStats = () => {
+    const totalAllocated = activeStrategies.reduce((sum, strategy) => sum + strategy.allocated_capital, 0);
+    const availableCapital = portfolioStats.available_capital - totalAllocated;
+    
+    setPortfolioStats(prev => ({
+      ...prev,
+      total_allocated: totalAllocated,
+      available_capital: availableCapital,
+      active_positions: activeStrategies.length
+    }));
+  };
+  
+  useEffect(() => {
+    calculatePortfolioStats();
+  }, [activeStrategies]);
+
+  const fetchActiveStrategies = async () => {
+    try {
+      const response = await fetch('http://127.0.0.1:8000/trading/active');
+      if (!response.ok) throw new Error('Failed to fetch active strategies');
+      const data = await response.json();
+      setActiveStrategies(data);
+    } catch (e: any) {
+      console.error('Failed to fetch active strategies:', e.message);
+    }
+  };
+
+  const fetchExchanges = async () => {
+    try {
+      const response = await fetch('http://127.0.0.1:8000/exchanges');
+      if (!response.ok) throw new Error('Failed to fetch exchanges');
+      const data = await response.json();
+      setExchanges(data);
+    } catch (e: any) {
+      setError(`Failed to fetch exchanges: ${e.message}`);
+    }
+  };
+
+  const fetchSymbols = async (exchangeId: string) => {
+    try {
+      const response = await fetch(`http://127.0.0.1:8000/symbols/${exchangeId}`);
+      if (!response.ok) throw new Error('Failed to fetch symbols');
+      const data = await response.json();
+      setSymbols(data);
+      if (data.length > 0 && !data.includes(activateForm.symbol)) {
+        setActivateForm(prev => ({ ...prev, symbol: data[0] }));
+      }
+    } catch (e: any) {
+      console.error('Failed to fetch symbols:', e.message);
+    }
+  };
+
+  const activateStrategy = async () => {
+    if (!selectedStrategy) return;
+    
+    setLoading(true);
+    try {
+      const response = await fetch('http://127.0.0.1:8000/trading/activate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          strategy_id: selectedStrategy.id,
+          ...activateForm
+        })
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.detail || 'Failed to activate strategy');
+      }
+      
+      const data = await response.json();
+      alert(data.message);
+      setShowActivateForm(false);
+      fetchActiveStrategies();
+      fetchPortfolioStats();
+    } catch (e: any) {
+      setError(`Failed to activate strategy: ${e.message}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const deactivateStrategy = async (activeStrategyId: number) => {
+    setLoading(true);
+    try {
+      const response = await fetch(`http://127.0.0.1:8000/trading/deactivate/${activeStrategyId}`, {
+        method: 'POST'
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.detail || 'Failed to deactivate strategy');
+      }
+      
+      const data = await response.json();
+      alert(data.message);
+      fetchActiveStrategies();
+      fetchPortfolioStats();
+    } catch (e: any) {
+      setError(`Failed to deactivate strategy: ${e.message}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (error) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="linear-card max-w-md mx-auto text-center">
+          <h2 className="text-h3 text-red-400 mb-4">Error</h2>
+          <p className="text-body text-secondary">{error}</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div>
-      <h1 className="text-2xl font-bold mb-4">Strategies</h1>
-      {/* Add Strategy Form will go here */}
-      {/* List of Strategies will go here */}
+    <div className="min-h-screen p-8">
+      <div className="max-w-7xl mx-auto">
+        <h1 className="text-h1 text-center mb-12">Trading Strategies</h1>
+        
+        {/* Portfolio Overview */}
+        <div className="linear-card mb-8">
+          <h2 className="text-h3 mb-6">Portfolio Overview</h2>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="glass-light p-4 rounded-lg text-center">
+              <p className="text-small text-secondary mb-1">Total Capital</p>
+              <p className="text-body font-medium text-white">${portfolioStats.available_capital + portfolioStats.total_allocated}</p>
+            </div>
+            <div className="glass-light p-4 rounded-lg text-center">
+              <p className="text-small text-secondary mb-1">Allocated</p>
+              <p className="text-body font-medium text-green-400">${portfolioStats.total_allocated}</p>
+            </div>
+            <div className="glass-light p-4 rounded-lg text-center">
+              <p className="text-small text-secondary mb-1">Available</p>
+              <p className="text-body font-medium text-blue-400">${portfolioStats.available_capital - portfolioStats.total_allocated}</p>
+            </div>
+            <div className="glass-light p-4 rounded-lg text-center">
+              <p className="text-small text-secondary mb-1">Active Strategies</p>
+              <p className="text-body font-medium text-white">{portfolioStats.active_positions}</p>
+            </div>
+          </div>
+        </div>
+        
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+          {/* Available Strategies */}
+          <div className="linear-card">
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-h3">Available Strategies</h2>
+              <button
+                onClick={() => setShowCreateForm(true)}
+                className="linear-button-primary py-2 px-4"
+                disabled={loading}
+              >
+                Create Strategy
+              </button>
+            </div>
+            {strategies.length > 0 ? (
+              <div className="space-y-4">
+                {strategies.map((strategy) => (
+                  <div key={strategy.id} className="glass-light p-4 rounded-lg">
+                    <h3 className="text-body font-medium text-white mb-2">{strategy.name}</h3>
+                    <p className="text-small text-secondary mb-2">{strategy.description || 'No description provided'}</p>
+                    <p className="text-small text-secondary mb-4">Created: {new Date(strategy.created_at).toLocaleDateString()}</p>
+                    <button 
+                      className="linear-button-primary py-2 px-4"
+                      onClick={() => {
+                        setSelectedStrategy(strategy);
+                        setShowActivateForm(true);
+                      }}
+                      disabled={loading}
+                    >
+                      Activate for Trading
+                    </button>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="glass-light p-4 rounded-lg">
+                <p className="text-small text-secondary">No strategies found. Create one first from the dashboard.</p>
+              </div>
+            )}
+          </div>
+          
+          {/* Active Strategies */}
+          <div className="linear-card">
+            <h2 className="text-h3 mb-6">Active Strategies</h2>
+            {activeStrategies.length > 0 ? (
+              <div className="space-y-4">
+                {activeStrategies.map((activeStrategy) => (
+                  <div key={activeStrategy.id} className="glass-medium p-4 rounded-lg">
+                    <h3 className="text-body font-medium text-white mb-2">
+                      {activeStrategy.strategies?.name || `Strategy ${activeStrategy.strategy_id}`}
+                    </h3>
+                    <div className="text-small text-secondary space-y-1 mb-4">
+                      <p>Exchange: {activeStrategy.exchange_name}</p>
+                      <p>Symbol: {activeStrategy.symbol}</p>
+                      <p>Capital: ${activeStrategy.allocated_capital}</p>
+                      <p>SL: {activeStrategy.stop_loss_percentage}% | TP: {activeStrategy.take_profit_percentage}%</p>
+                    </div>
+                    <button 
+                      className="linear-button-secondary py-2 px-4 text-red-400 hover:text-red-300"
+                      onClick={() => deactivateStrategy(activeStrategy.id)}
+                      disabled={loading}
+                    >
+                      Deactivate
+                    </button>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="glass-light p-4 rounded-lg">
+                <p className="text-small text-secondary">No active strategies found.</p>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Activate Strategy Modal */}
+        {showActivateForm && selectedStrategy && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="linear-card max-w-md w-full mx-4">
+              <h2 className="text-h3 mb-6">Activate {selectedStrategy.name}</h2>
+              
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-small mb-2">Exchange:</label>
+                  <select
+                    value={activateForm.exchange_name}
+                    onChange={(e) => setActivateForm(prev => ({ ...prev, exchange_name: e.target.value }))}
+                    className="linear-select w-full"
+                  >
+                    {exchanges.map((exchange) => (
+                      <option key={exchange} value={exchange}>{exchange}</option>
+                    ))}
+                  </select>
+                </div>
+                
+                <div>
+                  <label className="block text-small mb-2">Symbol:</label>
+                  <select
+                    value={activateForm.symbol}
+                    onChange={(e) => setActivateForm(prev => ({ ...prev, symbol: e.target.value }))}
+                    className="linear-select w-full"
+                  >
+                    {symbols.map((symbol) => (
+                      <option key={symbol} value={symbol}>{symbol}</option>
+                    ))}
+                  </select>
+                </div>
+                
+                <div>
+                  <label className="block text-small mb-2">Allocated Capital ($):</label>
+                  <input
+                    type="number"
+                    value={activateForm.allocated_capital}
+                    onChange={(e) => setActivateForm(prev => ({ ...prev, allocated_capital: parseFloat(e.target.value) }))}
+                    className="linear-input w-full"
+                    min="1"
+                  />
+                </div>
+                
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-small mb-2">Stop Loss (%):</label>
+                    <input
+                      type="number"
+                      value={activateForm.stop_loss_percentage}
+                      onChange={(e) => setActivateForm(prev => ({ ...prev, stop_loss_percentage: parseFloat(e.target.value) }))}
+                      className="linear-input w-full"
+                      min="0.1"
+                      step="0.1"
+                    />
+                  </div>
+                  
+                  <div>
+                    <label className="block text-small mb-2">Take Profit (%):</label>
+                    <input
+                      type="number"
+                      value={activateForm.take_profit_percentage}
+                      onChange={(e) => setActivateForm(prev => ({ ...prev, take_profit_percentage: parseFloat(e.target.value) }))}
+                      className="linear-input w-full"
+                      min="0.1"
+                      step="0.1"
+                    />
+                  </div>
+                </div>
+                
+                {/* Advanced Risk Management */}
+                <div className="border-t border-gray-700 pt-4 mt-4">
+                  <h4 className="text-small font-medium text-white mb-3">Risk Management</h4>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-small mb-2">Max Position Size (%):</label>
+                      <input
+                        type="number"
+                        value={activateForm.max_position_size}
+                        onChange={(e) => setActivateForm(prev => ({ ...prev, max_position_size: parseFloat(e.target.value) }))}
+                        className="linear-input w-full"
+                        min="0.01"
+                        max="1"
+                        step="0.01"
+                      />
+                    </div>
+                    
+                    <div>
+                      <label className="block text-small mb-2">Risk Per Trade (%):</label>
+                      <input
+                        type="number"
+                        value={activateForm.risk_per_trade}
+                        onChange={(e) => setActivateForm(prev => ({ ...prev, risk_per_trade: parseFloat(e.target.value) }))}
+                        className="linear-input w-full"
+                        min="0.1"
+                        step="0.1"
+                      />
+                    </div>
+                  </div>
+                  
+                  <div className="mt-4">
+                    <label className="block text-small mb-2">Daily Loss Limit (%):</label>
+                    <input
+                      type="number"
+                      value={activateForm.daily_loss_limit}
+                      onChange={(e) => setActivateForm(prev => ({ ...prev, daily_loss_limit: parseFloat(e.target.value) }))}
+                      className="linear-input w-full"
+                      min="1"
+                      step="0.5"
+                    />
+                  </div>
+                </div>
+              </div>
+              
+              <div className="flex space-x-4 mt-6">
+                <button
+                  onClick={activateStrategy}
+                  disabled={loading}
+                  className="linear-button-primary py-3 px-6 flex-1 disabled:opacity-50"
+                >
+                  {loading ? 'Activating...' : 'Activate Strategy'}
+                </button>
+                <button
+                  onClick={() => setShowActivateForm(false)}
+                  className="linear-button-secondary py-3 px-6"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+        
+        {/* Create Strategy Modal */}
+        {showCreateForm && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="linear-card max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto">
+              <h2 className="text-h3 mb-6">Create New Strategy</h2>
+              
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-small mb-2">Strategy Name *:</label>
+                  <input
+                    type="text"
+                    value={createForm.name}
+                    onChange={(e) => setCreateForm(prev => ({ ...prev, name: e.target.value }))}
+                    className="linear-input w-full"
+                    placeholder="e.g., Conservative BTC Strategy"
+                  />
+                </div>
+                
+                <div>
+                  <label className="block text-small mb-2">Description *:</label>
+                  <textarea
+                    value={createForm.description}
+                    onChange={(e) => setCreateForm(prev => ({ ...prev, description: e.target.value }))}
+                    className="linear-input w-full h-20"
+                    placeholder="Brief description of your strategy..."
+                  />
+                </div>
+                
+                <div>
+                  <label className="block text-small mb-2">Strategy Type:</label>
+                  <select
+                    value={createForm.strategy_type}
+                    onChange={(e) => setCreateForm(prev => ({ ...prev, strategy_type: e.target.value }))}
+                    className="linear-select w-full"
+                  >
+                    <option value="custom">Custom Strategy</option>
+                    <option value="cci">CCI Based</option>
+                    <option value="macd">MACD Based</option>
+                    <option value="rsi">RSI Based</option>
+                    <option value="bollinger">Bollinger Bands</option>
+                  </select>
+                </div>
+                
+                {/* Strategy Parameters */}
+                <div className="border-t border-gray-700 pt-4">
+                  <h4 className="text-small font-medium text-white mb-3">Strategy Parameters</h4>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-small mb-2">Indicator:</label>
+                      <select
+                        value={createForm.parameters.indicator}
+                        onChange={(e) => setCreateForm(prev => ({
+                          ...prev,
+                          parameters: { ...prev.parameters, indicator: e.target.value }
+                        }))}
+                        className="linear-select w-full"
+                      >
+                        <option value="CCI">CCI</option>
+                        <option value="RSI">RSI</option>
+                        <option value="MACD">MACD</option>
+                        <option value="SMA">Simple Moving Average</option>
+                      </select>
+                    </div>
+                    
+                    <div>
+                      <label className="block text-small mb-2">Window/Period:</label>
+                      <input
+                        type="number"
+                        value={createForm.parameters.window}
+                        onChange={(e) => setCreateForm(prev => ({
+                          ...prev,
+                          parameters: { ...prev.parameters, window: parseInt(e.target.value) }
+                        }))}
+                        className="linear-input w-full"
+                        min="5"
+                        max="200"
+                      />
+                    </div>
+                    
+                    <div>
+                      <label className="block text-small mb-2">Buy Threshold:</label>
+                      <input
+                        type="number"
+                        value={createForm.parameters.buy_threshold}
+                        onChange={(e) => setCreateForm(prev => ({
+                          ...prev,
+                          parameters: { ...prev.parameters, buy_threshold: parseFloat(e.target.value) }
+                        }))}
+                        className="linear-input w-full"
+                        step="0.1"
+                      />
+                    </div>
+                    
+                    <div>
+                      <label className="block text-small mb-2">Sell Threshold:</label>
+                      <input
+                        type="number"
+                        value={createForm.parameters.sell_threshold}
+                        onChange={(e) => setCreateForm(prev => ({
+                          ...prev,
+                          parameters: { ...prev.parameters, sell_threshold: parseFloat(e.target.value) }
+                        }))}
+                        className="linear-input w-full"
+                        step="0.1"
+                      />
+                    </div>
+                    
+                    <div className="col-span-2">
+                      <label className="block text-small mb-2">Timeframe:</label>
+                      <select
+                        value={createForm.parameters.timeframe}
+                        onChange={(e) => setCreateForm(prev => ({
+                          ...prev,
+                          parameters: { ...prev.parameters, timeframe: e.target.value }
+                        }))}
+                        className="linear-select w-full"
+                      >
+                        <option value="1m">1 minute</option>
+                        <option value="5m">5 minutes</option>
+                        <option value="15m">15 minutes</option>
+                        <option value="1h">1 hour</option>
+                        <option value="4h">4 hours</option>
+                        <option value="1d">1 day</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
+                
+                {/* Custom Script (Optional) */}
+                <div>
+                  <label className="block text-small mb-2">Custom Script (Optional):</label>
+                  <textarea
+                    value={createForm.script}
+                    onChange={(e) => setCreateForm(prev => ({ ...prev, script: e.target.value }))}
+                    className="linear-input w-full h-32 font-mono text-xs"
+                    placeholder="# Advanced users: Write your custom Python strategy here..."
+                  />
+                  <p className="text-xs text-secondary mt-1">Leave empty to auto-generate based on parameters above</p>
+                </div>
+              </div>
+              
+              <div className="flex space-x-4 mt-6">
+                <button
+                  onClick={createStrategy}
+                  disabled={loading}
+                  className="linear-button-primary py-3 px-6 flex-1 disabled:opacity-50"
+                >
+                  {loading ? 'Creating...' : 'Create Strategy'}
+                </button>
+                <button
+                  onClick={() => setShowCreateForm(false)}
+                  className="linear-button-secondary py-3 px-6"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
