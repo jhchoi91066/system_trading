@@ -1,15 +1,60 @@
 "use client";
 
 import { useState, useEffect } from 'react';
+import { useAuth } from '@clerk/nextjs';
 
 export default function StrategiesPage() {
   const [strategies, setStrategies] = useState<any[]>([]);
   const [activeStrategies, setActiveStrategies] = useState<any[]>([]);
   const [exchanges, setExchanges] = useState<string[]>([]);
   const [symbols, setSymbols] = useState<string[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [loadingFetch, setLoadingFetch] = useState(false); // For initial fetches
+  const [loadingAction, setLoadingAction] = useState(false); // For create/activate/deactivate actions
   const [error, setError] = useState<string | null>(null);
   
+  const { getToken } = useAuth();
+
+  const strategyParameterConfigs: { [key: string]: { name: string; label: string; type: string; defaultValue: any; options?: string[]; }[] } = {
+    CCI: [
+      { name: 'window', label: 'Window Period', type: 'number', defaultValue: 20 },
+      { name: 'buy_threshold', label: 'Buy Threshold', type: 'number', defaultValue: -100 },
+      { name: 'sell_threshold', label: 'Sell Threshold', type: 'number', defaultValue: 100 },
+      { name: 'timeframe', label: 'Timeframe', type: 'select', options: ['1m', '5m', '15m', '1h', '4h', '1d'], defaultValue: '1h' },
+    ],
+    MACD: [
+      { name: 'fast_period', label: 'Fast Period', type: 'number', defaultValue: 12 },
+      { name: 'slow_period', label: 'Slow Period', type: 'number', defaultValue: 26 },
+      { name: 'signal_period', label: 'Signal Period', type: 'number', defaultValue: 9 },
+      { name: 'timeframe', label: 'Timeframe', type: 'select', options: ['1m', '5m', '15m', '1h', '4h', '1d'], defaultValue: '1h' },
+    ],
+    RSI: [
+      { name: 'window', label: 'Window Period', type: 'number', defaultValue: 14 },
+      { name: 'buy_threshold', label: 'Buy Threshold', type: 'number', defaultValue: 30 },
+      { name: 'sell_threshold', label: 'Sell Threshold', type: 'number', defaultValue: 70 },
+      { name: 'timeframe', label: 'Timeframe', type: 'select', options: ['1m', '5m', '15m', '1h', '4h', '1d'], defaultValue: '1h' },
+    ],
+    SMA: [
+      { name: 'short_window', label: 'Short Window', type: 'number', defaultValue: 10 },
+      { name: 'long_window', label: 'Long Window', type: 'number', defaultValue: 50 },
+      { name: 'timeframe', label: 'Timeframe', type: 'select', options: ['1m', '5m', '15m', '1h', '4h', '1d'], defaultValue: '1h' },
+    ],
+    Bollinger: [
+      { name: 'window', label: 'Window Period', type: 'number', defaultValue: 20 },
+      { name: 'std_dev', label: 'Standard Deviations', type: 'number', defaultValue: 2 },
+      { name: 'timeframe', label: 'Timeframe', type: 'select', options: ['1m', '5m', '15m', '1h', '4h', '1d'], defaultValue: '1h' },
+    ],
+    custom: [], // No specific parameters for custom
+  };
+
+  const fetchWithAuth = async (url: string, options?: RequestInit) => {
+    const token = await getToken();
+    const headers = {
+      ...(options?.headers || {}),
+      'Authorization': `Bearer ${token}`,
+    };
+    return fetch(url, { ...options, headers });
+  };
+
   // Form states
   const [showActivateForm, setShowActivateForm] = useState(false);
   const [showCreateForm, setShowCreateForm] = useState(false);
@@ -29,14 +74,8 @@ export default function StrategiesPage() {
   const [createForm, setCreateForm] = useState({
     name: '',
     description: '',
-    strategy_type: 'custom',
-    parameters: {
-      indicator: 'CCI',
-      window: 20,
-      buy_threshold: -100,
-      sell_threshold: 100,
-      timeframe: '1h'
-    },
+    strategy_type: 'CCI', // Default to CCI
+    parameters: strategyParameterConfigs.CCI.reduce((acc, param) => ({ ...acc, [param.name]: param.defaultValue }), {}),
     script: ''
   });
   
@@ -56,8 +95,9 @@ export default function StrategiesPage() {
   }, []);
   
   const fetchPortfolioStats = async () => {
+    setLoadingFetch(true);
     try {
-      const response = await fetch('http://127.0.0.1:8000/portfolio/stats');
+      const response = await fetchWithAuth('http://127.0.0.1:8000/portfolio/stats');
       if (!response.ok) throw new Error('Failed to fetch portfolio stats');
       const data = await response.json();
       setPortfolioStats(prev => ({
@@ -68,6 +108,9 @@ export default function StrategiesPage() {
       }));
     } catch (e: any) {
       console.error('Failed to fetch portfolio stats:', e.message);
+      setError(`Failed to fetch portfolio stats: ${e.message}`);
+    } finally {
+      setLoadingFetch(false);
     }
   };
 
@@ -78,13 +121,17 @@ export default function StrategiesPage() {
   }, [activateForm.exchange_name]);
 
   const fetchStrategies = async () => {
+    setLoadingFetch(true);
+    setError(null);
     try {
-      const response = await fetch('http://127.0.0.1:8000/strategies');
+      const response = await fetchWithAuth('http://127.0.0.1:8000/strategies');
       if (!response.ok) throw new Error('Failed to fetch strategies');
       const data = await response.json();
       setStrategies(data);
     } catch (e: any) {
       setError(`Failed to fetch strategies: ${e.message}`);
+    } finally {
+      setLoadingFetch(false);
     }
   };
   
@@ -94,12 +141,12 @@ export default function StrategiesPage() {
       return;
     }
     
-    setLoading(true);
+    setLoadingAction(true);
     try {
       // Generate strategy script based on parameters
-      const strategyScript = generateStrategyScript(createForm.parameters);
+      const strategyScript = generateStrategyScript(createForm.strategy_type, createForm.parameters);
       
-      const response = await fetch('http://127.0.0.1:8000/strategies', {
+      const response = await fetchWithAuth('http://127.0.0.1:8000/strategies', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -122,43 +169,44 @@ export default function StrategiesPage() {
       setCreateForm({
         name: '',
         description: '',
-        strategy_type: 'custom',
-        parameters: {
-          indicator: 'CCI',
-          window: 20,
-          buy_threshold: -100,
-          sell_threshold: 100,
-          timeframe: '1h'
-        },
+        strategy_type: 'CCI',
+        parameters: strategyParameterConfigs.CCI.reduce((acc, param) => ({ ...acc, [param.name]: param.defaultValue }), {}),
         script: ''
       });
       fetchStrategies();
     } catch (e: any) {
       setError(`Failed to create strategy: ${e.message}`);
     } finally {
-      setLoading(false);
+      setLoadingAction(false);
     }
   };
   
-  const generateStrategyScript = (params: any) => {
-    return `
-# Auto-generated ${params.indicator} Strategy
-def strategy_logic(data, params):
-    """${params.indicator} based trading strategy"""
-    import pandas as pd
-    import numpy as np
-    
-    # Calculate ${params.indicator} indicator
-    window = params.get('window', ${params.window})
-    buy_threshold = params.get('buy_threshold', ${params.buy_threshold})
-    sell_threshold = params.get('sell_threshold', ${params.sell_threshold})
-    
-    # Your strategy logic here
-    signals = []
-    # Add your trading logic
-    
-    return signals
-`;
+  const generateStrategyScript = (strategyType: string, params: any) => {
+    let scriptContent = `# Auto-generated ${strategyType} Strategy\ndef strategy_logic(data, params):\n    \"\"\"${strategyType} based trading strategy\"\"\"\n    import pandas as pd\n    import numpy as np\n\n`;
+
+    switch (strategyType) {
+      case 'CCI':
+        scriptContent += `    # CCI Parameters\n    window = params.get('window', ${params.window})\n    buy_threshold = params.get('buy_threshold', ${params.buy_threshold})\n    sell_threshold = params.get('sell_threshold', ${params.sell_threshold})\n\n    # CCI Calculation (simplified)\n    tp = (data['high'] + data['low'] + data['close']) / 3\n    sma_tp = tp.rolling(window=window).mean()\n    mad_tp = tp.rolling(window=window).apply(lambda x: np.mean(np.abs(x - np.mean(x))), raw=True)\n    cci = (tp - sma_tp) / (0.015 * mad_tp)\n\n    signals = []\n    for i in range(len(cci)):\n        if cci.iloc[i] > sell_threshold: # Sell signal\n            signals.append(-1)\n        elif cci.iloc[i] < buy_threshold: # Buy signal\n            signals.append(1)\n        else:\n            signals.append(0)\n    return signals\n`;
+        break;
+      case 'MACD':
+        scriptContent += `    # MACD Parameters\n    fast_period = params.get('fast_period', ${params.fast_period})\n    slow_period = params.get('slow_period', ${params.slow_period})\n    signal_period = params.get('signal_period', ${params.signal_period})\n\n    # MACD Calculation (simplified)\n    ema_fast = data['close'].ewm(span=fast_period, adjust=False).mean()\n    ema_slow = data['close'].ewm(span=slow_period, adjust=False).mean()\n    macd = ema_fast - ema_slow\n    signal_line = macd.ewm(span=signal_period, adjust=False).mean()\n\n    signals = []\n    # Add MACD trading logic\n    return signals\n`;
+        break;
+      case 'RSI':
+        scriptContent += `    # RSI Parameters\n    window = params.get('window', ${params.window})\n    buy_threshold = params.get('buy_threshold', ${params.buy_threshold})\n    sell_threshold = params.get('sell_threshold', ${params.sell_threshold})\n\n    # RSI Calculation (simplified)\n    delta = data['close'].diff()\n    gain = (delta.where(delta > 0, 0)).rolling(window=window).mean()\n    loss = (-delta.where(delta < 0, 0)).rolling(window=window).mean()\n    rs = gain / loss\n    rsi = 100 - (100 / (1 + rs))\n\n    signals = []\n    # Add RSI trading logic\n    return signals\n`;
+        break;
+      case 'SMA':
+        scriptContent += `    # SMA Parameters\n    short_window = params.get('short_window', ${params.short_window})\n    long_window = params.get('long_window', ${params.long_window})\n\n    # SMA Calculation (simplified)\n    sma_short = data['close'].rolling(window=short_window).mean()\n    sma_long = data['close'].rolling(window=long_window).mean()\n\n    signals = []\n    # Add SMA trading logic\n    return signals\n`;
+        break;
+      case 'Bollinger':
+        scriptContent += `    # Bollinger Bands Parameters\n    window = params.get('window', ${params.window})\n    std_dev = params.get('std_dev', ${params.std_dev})\n\n    # Bollinger Bands Calculation (simplified)\n    sma = data['close'].rolling(window=window).mean()\n    std = data['close'].rolling(window=window).std()\n    upper_band = sma + (std * std_dev)\n    lower_band = sma - (std * std_dev)\n\n    signals = []\n    # Add Bollinger Bands trading logic\n    return signals\n`;
+        break;
+      case 'custom':
+      default:
+        scriptContent += `    # Custom strategy logic goes here\n    signals = []\n    # Add your trading logic\n    return signals\n`;
+        break;
+    }
+
+    return scriptContent;
   };
   
   const calculatePortfolioStats = () => {
@@ -179,7 +227,7 @@ def strategy_logic(data, params):
 
   const fetchActiveStrategies = async () => {
     try {
-      const response = await fetch('http://127.0.0.1:8000/trading/active');
+      const response = await fetchWithAuth('http://127.0.0.1:8000/trading/active');
       if (!response.ok) throw new Error('Failed to fetch active strategies');
       const data = await response.json();
       setActiveStrategies(data);
@@ -190,7 +238,7 @@ def strategy_logic(data, params):
 
   const fetchExchanges = async () => {
     try {
-      const response = await fetch('http://127.0.0.1:8000/exchanges');
+      const response = await fetchWithAuth('http://127.0.0.1:8000/exchanges');
       if (!response.ok) throw new Error('Failed to fetch exchanges');
       const data = await response.json();
       setExchanges(data);
@@ -201,7 +249,7 @@ def strategy_logic(data, params):
 
   const fetchSymbols = async (exchangeId: string) => {
     try {
-      const response = await fetch(`http://127.0.0.1:8000/symbols/${exchangeId}`);
+      const response = await fetchWithAuth(`http://127.0.0.1:8000/symbols/${exchangeId}`);
       if (!response.ok) throw new Error('Failed to fetch symbols');
       const data = await response.json();
       setSymbols(data);
@@ -216,9 +264,9 @@ def strategy_logic(data, params):
   const activateStrategy = async () => {
     if (!selectedStrategy) return;
     
-    setLoading(true);
+    setLoadingAction(true);
     try {
-      const response = await fetch('http://127.0.0.1:8000/trading/activate', {
+      const response = await fetchWithAuth('http://127.0.0.1:8000/trading/activate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -240,14 +288,14 @@ def strategy_logic(data, params):
     } catch (e: any) {
       setError(`Failed to activate strategy: ${e.message}`);
     } finally {
-      setLoading(false);
+      setLoadingAction(false);
     }
   };
 
   const deactivateStrategy = async (activeStrategyId: number) => {
-    setLoading(true);
+    setLoadingAction(true);
     try {
-      const response = await fetch(`http://127.0.0.1:8000/trading/deactivate/${activeStrategyId}`, {
+      const response = await fetchWithAuth(`http://127.0.0.1:8000/trading/deactivate/${activeStrategyId}`, {
         method: 'POST'
       });
       
@@ -263,7 +311,7 @@ def strategy_logic(data, params):
     } catch (e: any) {
       setError(`Failed to deactivate strategy: ${e.message}`);
     } finally {
-      setLoading(false);
+      setLoadingAction(false);
     }
   };
 
@@ -314,7 +362,7 @@ def strategy_logic(data, params):
               <button
                 onClick={() => setShowCreateForm(true)}
                 className="linear-button-primary py-2 px-4"
-                disabled={loading}
+                disabled={loadingAction || loadingFetch}
               >
                 Create Strategy
               </button>
@@ -326,13 +374,18 @@ def strategy_logic(data, params):
                     <h3 className="text-body font-medium text-white mb-2">{strategy.name}</h3>
                     <p className="text-small text-secondary mb-2">{strategy.description || 'No description provided'}</p>
                     <p className="text-small text-secondary mb-4">Created: {new Date(strategy.created_at).toLocaleDateString()}</p>
+                    {strategy.strategy_type !== 'custom' && strategy.parameters && (
+                      <div className="text-xs text-gray-400 mb-2">
+                        Parameters: {Object.entries(strategy.parameters).map(([key, value]) => `${key}: ${value}`).join(', ')}
+                      </div>
+                    )}
                     <button 
                       className="linear-button-primary py-2 px-4"
                       onClick={() => {
                         setSelectedStrategy(strategy);
                         setShowActivateForm(true);
                       }}
-                      disabled={loading}
+                      disabled={loadingAction}
                     >
                       Activate for Trading
                     </button>
@@ -361,11 +414,14 @@ def strategy_logic(data, params):
                       <p>Symbol: {activeStrategy.symbol}</p>
                       <p>Capital: ${activeStrategy.allocated_capital}</p>
                       <p>SL: {activeStrategy.stop_loss_percentage}% | TP: {activeStrategy.take_profit_percentage}%</p>
+                      {activeStrategy.strategies?.parameters && (
+                        <p>Parameters: {Object.entries(activeStrategy.strategies.parameters).map(([key, value]) => `${key}: ${value}`).join(', ')}</p>
+                      )}
                     </div>
                     <button 
                       className="linear-button-secondary py-2 px-4 text-red-400 hover:text-red-300"
                       onClick={() => deactivateStrategy(activeStrategy.id)}
-                      disabled={loading}
+                      disabled={loadingAction}
                     >
                       Deactivate
                     </button>
@@ -497,10 +553,10 @@ def strategy_logic(data, params):
               <div className="flex space-x-4 mt-6">
                 <button
                   onClick={activateStrategy}
-                  disabled={loading}
+                  disabled={loadingAction}
                   className="linear-button-primary py-3 px-6 flex-1 disabled:opacity-50"
                 >
-                  {loading ? 'Activating...' : 'Activate Strategy'}
+                  {loadingAction ? 'Activating...' : 'Activate Strategy'}
                 </button>
                 <button
                   onClick={() => setShowActivateForm(false)}
@@ -545,101 +601,65 @@ def strategy_logic(data, params):
                   <label className="block text-small mb-2">Strategy Type:</label>
                   <select
                     value={createForm.strategy_type}
-                    onChange={(e) => setCreateForm(prev => ({ ...prev, strategy_type: e.target.value }))}
+                    onChange={(e) => {
+                      const newStrategyType = e.target.value;
+                      setCreateForm(prev => ({
+                        ...prev,
+                        strategy_type: newStrategyType,
+                        parameters: strategyParameterConfigs[newStrategyType].reduce((acc, param) => ({ ...acc, [param.name]: param.defaultValue }), {}),
+                        script: '' // Clear custom script when changing type
+                      }));
+                    }}
                     className="linear-select w-full"
                   >
                     <option value="custom">Custom Strategy</option>
-                    <option value="cci">CCI Based</option>
-                    <option value="macd">MACD Based</option>
-                    <option value="rsi">RSI Based</option>
-                    <option value="bollinger">Bollinger Bands</option>
+                    <option value="CCI">CCI Based</option>
+                    <option value="MACD">MACD Based</option>
+                    <option value="RSI">RSI Based</option>
+                    <option value="SMA">Simple Moving Average</option>
+                    <option value="Bollinger">Bollinger Bands</option>
                   </select>
                 </div>
                 
                 {/* Strategy Parameters */}
-                <div className="border-t border-gray-700 pt-4">
-                  <h4 className="text-small font-medium text-white mb-3">Strategy Parameters</h4>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-small mb-2">Indicator:</label>
-                      <select
-                        value={createForm.parameters.indicator}
-                        onChange={(e) => setCreateForm(prev => ({
-                          ...prev,
-                          parameters: { ...prev.parameters, indicator: e.target.value }
-                        }))}
-                        className="linear-select w-full"
-                      >
-                        <option value="CCI">CCI</option>
-                        <option value="RSI">RSI</option>
-                        <option value="MACD">MACD</option>
-                        <option value="SMA">Simple Moving Average</option>
-                      </select>
-                    </div>
-                    
-                    <div>
-                      <label className="block text-small mb-2">Window/Period:</label>
-                      <input
-                        type="number"
-                        value={createForm.parameters.window}
-                        onChange={(e) => setCreateForm(prev => ({
-                          ...prev,
-                          parameters: { ...prev.parameters, window: parseInt(e.target.value) }
-                        }))}
-                        className="linear-input w-full"
-                        min="5"
-                        max="200"
-                      />
-                    </div>
-                    
-                    <div>
-                      <label className="block text-small mb-2">Buy Threshold:</label>
-                      <input
-                        type="number"
-                        value={createForm.parameters.buy_threshold}
-                        onChange={(e) => setCreateForm(prev => ({
-                          ...prev,
-                          parameters: { ...prev.parameters, buy_threshold: parseFloat(e.target.value) }
-                        }))}
-                        className="linear-input w-full"
-                        step="0.1"
-                      />
-                    </div>
-                    
-                    <div>
-                      <label className="block text-small mb-2">Sell Threshold:</label>
-                      <input
-                        type="number"
-                        value={createForm.parameters.sell_threshold}
-                        onChange={(e) => setCreateForm(prev => ({
-                          ...prev,
-                          parameters: { ...prev.parameters, sell_threshold: parseFloat(e.target.value) }
-                        }))}
-                        className="linear-input w-full"
-                        step="0.1"
-                      />
-                    </div>
-                    
-                    <div className="col-span-2">
-                      <label className="block text-small mb-2">Timeframe:</label>
-                      <select
-                        value={createForm.parameters.timeframe}
-                        onChange={(e) => setCreateForm(prev => ({
-                          ...prev,
-                          parameters: { ...prev.parameters, timeframe: e.target.value }
-                        }))}
-                        className="linear-select w-full"
-                      >
-                        <option value="1m">1 minute</option>
-                        <option value="5m">5 minutes</option>
-                        <option value="15m">15 minutes</option>
-                        <option value="1h">1 hour</option>
-                        <option value="4h">4 hours</option>
-                        <option value="1d">1 day</option>
-                      </select>
+                {createForm.strategy_type !== 'custom' && (
+                  <div className="border-t border-gray-700 pt-4">
+                    <h4 className="text-small font-medium text-white mb-3">Strategy Parameters</h4>
+                    <div className="grid grid-cols-2 gap-4">
+                      {strategyParameterConfigs[createForm.strategy_type]?.map(param => (
+                        <div key={param.name} className={param.type === 'select' && param.options?.length > 3 ? 'col-span-2' : ''}>
+                          <label className="block text-small mb-2">{param.label}:</label>
+                          {param.type === 'number' && (
+                            <input
+                              type="number"
+                              value={createForm.parameters[param.name]}
+                              onChange={(e) => setCreateForm(prev => ({
+                                ...prev,
+                                parameters: { ...prev.parameters, [param.name]: parseFloat(e.target.value) }
+                              }))}
+                              className="linear-input w-full"
+                              step="any"
+                            />
+                          )}
+                          {param.type === 'select' && (
+                            <select
+                              value={createForm.parameters[param.name]}
+                              onChange={(e) => setCreateForm(prev => ({
+                                ...prev,
+                                parameters: { ...prev.parameters, [param.name]: e.target.value }
+                              }))}
+                              className="linear-select w-full"
+                            >
+                              {param.options?.map(option => (
+                                <option key={option} value={option}>{option}</option>
+                              ))}
+                            </select>
+                          )}
+                        </div>
+                      ))}
                     </div>
                   </div>
-                </div>
+                )}
                 
                 {/* Custom Script (Optional) */}
                 <div>
@@ -657,10 +677,10 @@ def strategy_logic(data, params):
               <div className="flex space-x-4 mt-6">
                 <button
                   onClick={createStrategy}
-                  disabled={loading}
+                  disabled={loadingAction}
                   className="linear-button-primary py-3 px-6 flex-1 disabled:opacity-50"
                 >
-                  {loading ? 'Creating...' : 'Create Strategy'}
+                  {loadingAction ? 'Creating...' : 'Create Strategy'}
                 </button>
                 <button
                   onClick={() => setShowCreateForm(false)}

@@ -1,13 +1,34 @@
 "use client";
 
 import { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
+import { useAuth } from '@clerk/nextjs';
+import TradingChart from '@/components/TradingChart';
+import { useWebSocket } from '@/contexts/WebSocketProvider';
+import { LocalizedPageTitle, LocalizedSectionTitle, LocalizedSelectLabel, LocalizedButton, LocalizedTableHeader } from '@/components/LocalizedPage';
+import NoSSR from '@/components/NoSSR';
 
 export default function Home() {
+  const { t } = useTranslation();
+  const { getToken } = useAuth();
+  const { data: websocketData } = useWebSocket();
+  const { portfolio_stats: portfolioStats } = websocketData;
   const [exchanges, setExchanges] = useState<string[]>([]);
   const [ticker, setTicker] = useState<any>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [fetchError, setFetchError] = useState<string | null>(null); // Renamed to avoid conflict
   const [symbols, setSymbols] = useState<string[]>([]);
   const [loadingSymbols, setLoadingSymbols] = useState(false);
+  const [loadingExchanges, setLoadingExchanges] = useState(false); // New loading state
+  const [loadingTicker, setLoadingTicker] = useState(false); // New loading state
+
+  const fetchWithAuth = async (url: string, options?: RequestInit) => {
+    const token = await getToken();
+    const headers = {
+      ...(options?.headers || {}),
+      'Authorization': `Bearer ${token}`,
+    };
+    return fetch(url, { ...options, headers });
+  };
 
   // Backtesting state
   const [backtestResults, setBacktestResults] = useState<any>(null);
@@ -26,15 +47,19 @@ export default function Home() {
 
   useEffect(() => {
     const fetchExchanges = async () => {
+      setLoadingExchanges(true);
+      setFetchError(null);
       try {
-        const response = await fetch('http://127.0.0.1:8000/exchanges');
+        const response = await fetchWithAuth('http://127.0.0.1:8000/exchanges');
         if (!response.ok) {
           throw new Error(`HTTP error! status: ${response.status}`);
         }
         const data = await response.json();
         setExchanges(data);
       } catch (e: any) {
-        setError(`Failed to fetch exchanges: ${e.message}`);
+        setFetchError(`Failed to fetch exchanges: ${e.message}`);
+      } finally {
+        setLoadingExchanges(false);
       }
     };
 
@@ -45,9 +70,9 @@ export default function Home() {
     const fetchSymbols = async () => {
       if (!backtestParams.exchange_id) return;
       setLoadingSymbols(true);
-      setError(null);
+      setFetchError(null);
       try {
-        const response = await fetch(`http://127.0.0.1:8000/symbols/${backtestParams.exchange_id}`);
+        const response = await fetchWithAuth(`http://127.0.0.1:8000/symbols/${backtestParams.exchange_id}`);
         if (!response.ok) {
           throw new Error(`HTTP error! status: ${response.status}`);
         }
@@ -58,7 +83,7 @@ export default function Home() {
           setBacktestParams(prevParams => ({ ...prevParams, symbol: data[0] }));
         }
       } catch (e: any) {
-        setError(`Failed to fetch symbols for ${backtestParams.exchange_id}: ${e.message}`);
+        setFetchError(`Failed to fetch symbols for ${backtestParams.exchange_id}: ${e.message}`);
       } finally {
         setLoadingSymbols(false);
       }
@@ -70,15 +95,19 @@ export default function Home() {
   useEffect(() => {
     const fetchTicker = async () => {
       if (!backtestParams.exchange_id || !backtestParams.symbol) return;
+      setLoadingTicker(true);
+      setFetchError(null);
       try {
-        const response = await fetch(`http://127.0.0.1:8000/ticker/${backtestParams.exchange_id}/${backtestParams.symbol}`);
+        const response = await fetchWithAuth(`http://127.0.0.1:8000/ticker/${backtestParams.exchange_id}/${backtestParams.symbol}`);
         if (!response.ok) {
           throw new Error(`HTTP error! status: ${response.status}`);
         }
         const data = await response.json();
         setTicker(data);
       } catch (e: any) {
-        setError(`Failed to fetch ticker for ${backtestParams.exchange_id}/${backtestParams.symbol}: ${e.message}`);
+        setFetchError(`Failed to fetch ticker for ${backtestParams.exchange_id}/${backtestParams.symbol}: ${e.message}`);
+      } finally {
+        setLoadingTicker(false);
       }
     };
     fetchTicker();
@@ -95,7 +124,7 @@ export default function Home() {
 
   const runBacktest = async () => {
     setLoadingBacktest(true);
-    setError(null);
+    setFetchError(null);
     try {
       const params = new URLSearchParams();
       for (const key in backtestParams) {
@@ -103,25 +132,31 @@ export default function Home() {
           params.append(key, (backtestParams as any)[key].toString());
         }
       }
-      const response = await fetch(`http://127.0.0.1:8000/backtest/${backtestParams.exchange_id}/${backtestParams.symbol}?${params.toString()}`);
+      const response = await fetchWithAuth(`http://127.0.0.1:8000/backtest/${backtestParams.exchange_id}/${backtestParams.symbol}?${params.toString()}`);
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
       const data = await response.json();
       setBacktestResults(data);
     } catch (e: any) {
-      setError(`Failed to run backtest: ${e.message}`);
+      setFetchError(`Failed to run backtest: ${e.message}`);
     } finally {
       setLoadingBacktest(false);
     }
   };
 
-  if (error) {
+  if (fetchError) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="linear-card max-w-md mx-auto text-center">
           <h2 className="text-h3 text-red-400 mb-4">Error</h2>
-          <p className="text-body text-secondary">{error}</p>
+          <p className="text-body text-secondary mb-6">{fetchError}</p>
+          <button 
+            onClick={() => setFetchError(null)}
+            className="linear-button-primary py-2 px-4"
+          >
+            Dismiss
+          </button>
         </div>
       </div>
     );
@@ -130,12 +165,28 @@ export default function Home() {
   return (
     <div className="min-h-screen p-8">
       <div className="max-w-7xl mx-auto">
-        <h1 className="text-h1 text-center mb-12">Trading Dashboard</h1>
+        <NoSSR fallback={<h1 className="text-h1 text-center mb-12">Trading Dashboard</h1>}>
+          <LocalizedPageTitle />
+        </NoSSR>
+
+        {/* Trading Chart */}
+        <div className="mb-8">
+          <NoSSR fallback={<div className="linear-card p-4 text-center">Loading chart...</div>}>
+            <TradingChart 
+              symbol={backtestParams.symbol}
+              exchange={backtestParams.exchange_id}
+              height={600}
+              interval="1h"
+            />
+          </NoSSR>
+        </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         {/* Exchanges List */}
         <div className="linear-card">
-          <h2 className="text-h3 mb-6">Available Exchanges</h2>
+          <NoSSR fallback={<h2 className="text-h3 mb-6">Available Exchanges</h2>}>
+            <LocalizedSectionTitle sectionKey="dashboard.selectExchange" />
+          </NoSSR>
           {exchanges.length > 0 ? (
             <ul className="list-disc list-inside max-h-60 overflow-y-auto text-body space-y-1">
               {exchanges.map((exchange) => (
@@ -143,21 +194,26 @@ export default function Home() {
               ))}
             </ul>
           ) : (
-            <p className="text-small text-secondary">Loading exchanges...</p>
+            <p className="text-small text-secondary">{loadingExchanges ? 'Loading exchanges...' : 'No exchanges found.'}</p>
           )}
         </div>
 
         {/* Real-time Ticker */}
         <div className="linear-card col-span-2">
-          <h2 className="text-h3 mb-6">Real-time Ticker</h2>
+          <NoSSR fallback={<h2 className="text-h3 mb-6">Real-time Ticker</h2>}>
+            <LocalizedSectionTitle sectionKey="dashboard.currentPrice" />
+          </NoSSR>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
             <div>
-              <label className="block text-small mb-2">Exchange:</label>
+              <NoSSR fallback={<label className="block text-small mb-2">Exchange:</label>}>
+                <LocalizedSelectLabel labelKey="dashboard.selectExchange" />
+              </NoSSR>
               <select
                 name="exchange_id"
                 value={backtestParams.exchange_id}
                 onChange={handleBacktestChange}
                 className="linear-select w-full"
+                disabled={loadingExchanges || loadingTicker}
               >
                 {exchanges.map((exchange) => (
                   <option key={exchange} value={exchange}>{exchange}</option>
@@ -165,25 +221,31 @@ export default function Home() {
               </select>
             </div>
             <div>
-              <label className="block text-small mb-2">Symbol:</label>
-              <select
-                name="symbol"
-                value={backtestParams.symbol}
-                onChange={handleBacktestChange}
-                className="linear-select w-full"
-                disabled={loadingSymbols}
-              >
-                {loadingSymbols ? (
-                  <option>Loading symbols...</option>
-                ) : (
-                  symbols.map((s) => (
-                    <option key={s} value={s}>{s}</option>
-                  ))
-                )}
-              </select>
+              <NoSSR fallback={<label className="block text-small mb-2">Symbol:</label>}>
+                <LocalizedSelectLabel labelKey="dashboard.selectSymbol" />
+              </NoSSR>
+              <NoSSR fallback={<select className="linear-select w-full"><option>Loading...</option></select>}>
+                <select
+                  name="symbol"
+                  value={backtestParams.symbol}
+                  onChange={handleBacktestChange}
+                  className="linear-select w-full"
+                  disabled={loadingSymbols || loadingTicker}
+                >
+                  {loadingSymbols ? (
+                    <option>{t('common.loading')}</option>
+                  ) : (
+                    symbols.map((s) => (
+                      <option key={s} value={s}>{s}</option>
+                    ))
+                  )}
+                </select>
+              </NoSSR>
             </div>
           </div>
-          {ticker ? (
+          {loadingTicker ? (
+            <p className="text-small text-secondary">Loading ticker data...</p>
+          ) : ticker ? (
             <div className="glass-light p-4 rounded-lg">
               <p className="text-body mb-2"><span className="text-secondary">Symbol:</span> <span className="text-white font-medium">{ticker.symbol}</span></p>
               <p className="text-body mb-2"><span className="text-secondary">Last Price:</span> <span className="text-white font-medium">${ticker.last?.toFixed(2)}</span></p>
@@ -193,17 +255,43 @@ export default function Home() {
               <p className="text-body"><span className="text-secondary">Timestamp:</span> <span className="text-white font-medium">{new Date(ticker.timestamp).toLocaleString()}</span></p>
             </div>
           ) : (
-            <p className="text-small text-secondary">Loading ticker data...</p>
+            <p className="text-small text-secondary">No ticker data available.</p>
           )}
         </div>
       </div>
 
+        {/* Portfolio Overview */}
+        {portfolioStats && (
+          <div className="linear-card mt-8">
+            <LocalizedSectionTitle sectionKey="dashboard.portfolioOverview" />
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div className="glass-light p-4 rounded-lg text-center">
+                <p className="text-small text-secondary mb-1">Total Capital</p>
+                <p className="text-h4 font-medium text-white">${portfolioStats.total_capital?.toLocaleString()}</p>
+              </div>
+              <div className="glass-light p-4 rounded-lg text-center">
+                <p className="text-small text-secondary mb-1">Allocated</p>
+                <p className="text-h4 font-medium text-green-400">${portfolioStats.total_allocated?.toLocaleString()}</p>
+                <p className="text-xs text-secondary">{portfolioStats.allocation_percentage?.toFixed(1)}%</p>
+              </div>
+              <div className="glass-light p-4 rounded-lg text-center">
+                <p className="text-small text-secondary mb-1">Available</p>
+                <p className="text-h4 font-medium text-blue-400">${portfolioStats.available_capital?.toLocaleString()}</p>
+              </div>
+              <div className="glass-light p-4 rounded-lg text-center">
+                <p className="text-small text-secondary mb-1">Active Strategies</p>
+                <p className="text-h4 font-medium text-white">{portfolioStats.active_strategies}</p>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Backtest Strategy */}
         <div className="linear-card mt-8">
-          <h2 className="text-h3 mb-6">Backtest Strategy (CCI)</h2>
+          <LocalizedSectionTitle sectionKey="strategies.backtest" />
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
           <div>
-            <label className="block text-small mb-2">Exchange ID:</label>
+            <LocalizedSelectLabel labelKey="dashboard.selectExchange" />
             <select
               name="exchange_id"
               value={backtestParams.exchange_id}
@@ -225,7 +313,7 @@ export default function Home() {
               disabled={loadingSymbols}
             >
               {loadingSymbols ? (
-                <option>Loading symbols...</option>
+                <option>{t('common.loading')}</option>
               ) : (
                 symbols.map((s) => (
                   <option key={s} value={s}>{s}</option>
@@ -305,13 +393,22 @@ export default function Home() {
             />
           </div>
         </div>
-          <button
-            onClick={runBacktest}
-            disabled={loadingBacktest}
-            className="linear-button-primary py-3 px-8 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-          {loadingBacktest ? 'Running Backtest...' : 'Run Backtest'}
-        </button>
+          <NoSSR fallback={
+            <button
+              disabled={loadingBacktest}
+              className="linear-button-primary py-3 px-8 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {loadingBacktest ? 'Loading...' : 'Backtest'}
+            </button>
+          }>
+            <button
+              onClick={runBacktest}
+              disabled={loadingBacktest}
+              className="linear-button-primary py-3 px-8 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+            {loadingBacktest ? t('common.loading') : t('strategies.backtest')}
+          </button>
+          </NoSSR>
 
         {backtestResults && (
             <div className="mt-8 glass-medium p-6 rounded-lg">

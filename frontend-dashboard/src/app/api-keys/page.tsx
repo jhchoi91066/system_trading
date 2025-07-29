@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from 'react';
+import { useAuth } from '@clerk/nextjs';
 
 interface ApiKey {
   id: number;
@@ -12,9 +13,20 @@ interface ApiKey {
 
 export default function ApiKeysPage() {
   const [apiKeys, setApiKeys] = useState<ApiKey[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [loadingFetch, setLoadingFetch] = useState(false); // For initial fetch
+  const [loadingAction, setLoadingAction] = useState(false); // For add/delete/test actions
   const [error, setError] = useState<string | null>(null);
   const [showAddForm, setShowAddForm] = useState(false);
+  const { getToken } = useAuth();
+
+  const fetchWithAuth = async (url: string, options?: RequestInit) => {
+    const token = await getToken();
+    const headers = {
+      ...(options?.headers || {}),
+      'Authorization': `Bearer ${token}`,
+    };
+    return fetch(url, { ...options, headers });
+  };
   
   const [addForm, setAddForm] = useState({
     exchange_name: 'binance',
@@ -32,13 +44,17 @@ export default function ApiKeysPage() {
   }, []);
 
   const fetchApiKeys = async () => {
+    setLoadingFetch(true);
+    setError(null);
     try {
-      const response = await fetch('http://127.0.0.1:8000/api_keys');
+      const response = await fetchWithAuth('http://127.0.0.1:8000/api_keys');
       if (!response.ok) throw new Error('Failed to fetch API keys');
       const data = await response.json();
       setApiKeys(data);
     } catch (e: any) {
       setError(`Failed to fetch API keys: ${e.message}`);
+    } finally {
+      setLoadingFetch(false);
     }
   };
 
@@ -48,9 +64,9 @@ export default function ApiKeysPage() {
       return;
     }
 
-    setLoading(true);
+    setLoadingAction(true);
     try {
-      const response = await fetch('http://127.0.0.1:8000/api_keys', {
+      const response = await fetchWithAuth('http://127.0.0.1:8000/api_keys', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(addForm)
@@ -83,7 +99,7 @@ export default function ApiKeysPage() {
     
     setLoading(true);
     try {
-      const response = await fetch(`http://127.0.0.1:8000/api_keys/${apiKeyId}`, {
+      const response = await fetchWithAuth(`http://127.0.0.1:8000/api_keys/${apiKeyId}`, {
         method: 'DELETE'
       });
       
@@ -98,14 +114,14 @@ export default function ApiKeysPage() {
     } catch (e: any) {
       setError(`Failed to delete API key: ${e.message}`);
     } finally {
-      setLoading(false);
+      setLoadingAction(false);
     }
   };
 
   const testConnection = async (exchange: string) => {
     setLoading(true);
     try {
-      const response = await fetch(`http://127.0.0.1:8000/trading/balance/${exchange}`);
+      const response = await fetchWithAuth(`http://127.0.0.1:8000/trading/balance/${exchange}`);
       if (!response.ok) {
         const errorData = await response.json();
         throw new Error(errorData.detail || 'Connection test failed');
@@ -116,7 +132,7 @@ export default function ApiKeysPage() {
     } catch (e: any) {
       setError(`Connection test failed: ${e.message}`);
     } finally {
-      setLoading(false);
+      setLoadingAction(false);
     }
   };
 
@@ -160,7 +176,7 @@ export default function ApiKeysPage() {
             <button
               onClick={() => setShowAddForm(true)}
               className="linear-button-primary py-2 px-4"
-              disabled={loading}
+              disabled={loadingAction || loadingFetch}
             >
               Add New API Key
             </button>
@@ -191,14 +207,14 @@ export default function ApiKeysPage() {
                       <button
                         onClick={() => testConnection(apiKey.exchange_name)}
                         className="linear-button-secondary py-1 px-3 text-small"
-                        disabled={loading}
+                        disabled={loadingAction}
                       >
                         Test
                       </button>
                       <button
                         onClick={() => deleteApiKey(apiKey.id)}
                         className="linear-button-secondary py-1 px-3 text-small text-red-400 hover:text-red-300"
-                        disabled={loading}
+                        disabled={loadingAction}
                       >
                         Delete
                       </button>
@@ -288,10 +304,10 @@ export default function ApiKeysPage() {
               <div className="flex space-x-4 mt-6">
                 <button
                   onClick={addApiKey}
-                  disabled={loading}
+                  disabled={loadingAction}
                   className="linear-button-primary py-3 px-6 flex-1 disabled:opacity-50"
                 >
-                  {loading ? 'Adding...' : 'Add API Key'}
+                  {loadingAction ? 'Adding...' : 'Add API Key'}
                 </button>
                 <button
                   onClick={() => setShowAddForm(false)}

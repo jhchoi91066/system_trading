@@ -1,111 +1,28 @@
 "use client";
 
-import { useState, useEffect } from 'react';
-
-interface PortfolioStats {
-  total_capital: number;
-  total_allocated: number;
-  available_capital: number;
-  active_strategies: number;
-  recent_trades_count: number;
-  allocation_percentage: number;
-}
-
-interface StrategyPerformance {
-  strategy_id: number;
-  total_trades: number;
-  winning_trades: number;
-  win_rate: number;
-  recent_trades: any[];
-}
-
-interface ActiveStrategy {
-  id: number;
-  strategy_id: number;
-  exchange_name: string;
-  symbol: string;
-  allocated_capital: number;
-  stop_loss_percentage: number;
-  take_profit_percentage: number;
-  is_active: boolean;
-  created_at: string;
-}
+import { useEffect, useState } from 'react';
+import TradingChart from '@/components/TradingChart';
+import { useWebSocket } from '@/contexts/WebSocketProvider';
 
 export default function MonitoringPage() {
-  const [portfolioStats, setPortfolioStats] = useState<PortfolioStats | null>(null);
-  const [activeStrategies, setActiveStrategies] = useState<ActiveStrategy[]>([]);
-  const [performanceData, setPerformanceData] = useState<{ [key: number]: StrategyPerformance }>({});
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [autoRefresh, setAutoRefresh] = useState(false);
+  const [lastUpdateTime, setLastUpdateTime] = useState<string>('');
+  const { data, isConnected: wsConnected, error: wsError, sendMessage } = useWebSocket();
+  const { portfolio_stats: portfolioStats, active_strategies: activeStrategies, performance_data: performanceData } = data;
 
   useEffect(() => {
-    fetchAllData();
-  }, []);
-
-  useEffect(() => {
-    let interval: NodeJS.Timeout;
-    if (autoRefresh) {
-      interval = setInterval(fetchAllData, 10000); // Refresh every 10 seconds
+    if (wsConnected) {
+      setLastUpdateTime(new Date().toLocaleTimeString());
     }
-    return () => {
-      if (interval) clearInterval(interval);
-    };
-  }, [autoRefresh]);
+  }, [wsConnected, data]); // Update timestamp when connection status or data changes
 
-  const fetchAllData = async () => {
-    setLoading(true);
-    try {
-      await Promise.all([
-        fetchPortfolioStats(),
-        fetchActiveStrategies(),
-      ]);
-    } catch (e: any) {
-      setError(`Failed to fetch monitoring data: ${e.message}`);
-    } finally {
-      setLoading(false);
+  const requestManualUpdate = () => {
+    if (wsConnected) {
+      sendMessage({ type: 'request_update' });
+      setLastUpdateTime(new Date().toLocaleTimeString()); // Update timestamp immediately on request
     }
   };
 
-  const fetchPortfolioStats = async () => {
-    try {
-      const response = await fetch('http://127.0.0.1:8000/portfolio/stats');
-      if (!response.ok) throw new Error('Failed to fetch portfolio stats');
-      const data = await response.json();
-      setPortfolioStats(data);
-    } catch (e: any) {
-      console.error('Failed to fetch portfolio stats:', e.message);
-    }
-  };
-
-  const fetchActiveStrategies = async () => {
-    try {
-      const response = await fetch('http://127.0.0.1:8000/trading/active');
-      if (!response.ok) throw new Error('Failed to fetch active strategies');
-      const data = await response.json();
-      setActiveStrategies(data);
-      
-      // Fetch performance for each active strategy
-      for (const strategy of data) {
-        fetchStrategyPerformance(strategy.strategy_id);
-      }
-    } catch (e: any) {
-      console.error('Failed to fetch active strategies:', e.message);
-    }
-  };
-
-  const fetchStrategyPerformance = async (strategyId: number) => {
-    try {
-      const response = await fetch(`http://127.0.0.1:8000/strategies/performance/${strategyId}`);
-      if (!response.ok) throw new Error('Failed to fetch strategy performance');
-      const data = await response.json();
-      setPerformanceData(prev => ({ ...prev, [strategyId]: data }));
-    } catch (e: any) {
-      console.error(`Failed to fetch performance for strategy ${strategyId}:`, e.message);
-    }
-  };
-
-  const getStrategyStatus = (strategy: ActiveStrategy) => {
+  const getStrategyStatus = (strategy: any) => { // Use 'any' for now, or import types from WebSocketProvider
     const performance = performanceData[strategy.strategy_id];
     if (!performance) return { status: 'Loading...', color: 'text-gray-400' };
     
@@ -124,17 +41,14 @@ export default function MonitoringPage() {
     }
   };
 
-  if (error) {
+  if (wsError) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="linear-card max-w-md mx-auto text-center">
           <h2 className="text-h3 text-red-400 mb-4">Error</h2>
-          <p className="text-body text-secondary mb-6">{error}</p>
+          <p className="text-body text-secondary mb-6">{wsError}</p>
           <button 
-            onClick={() => {
-              setError(null);
-              fetchAllData();
-            }}
+            onClick={() => window.location.reload()} // Simple reload to attempt reconnect
             className="linear-button-primary py-2 px-4"
           >
             Try Again
@@ -150,26 +64,43 @@ export default function MonitoringPage() {
         <div className="flex justify-between items-center mb-8">
           <h1 className="text-h1">Performance Monitoring</h1>
           <div className="flex items-center space-x-4">
-            <div className="flex items-center space-x-2">
-              <input
-                type="checkbox"
-                id="autoRefresh"
-                checked={autoRefresh}
-                onChange={(e) => setAutoRefresh(e.target.checked)}
-                className="rounded"
-              />
-              <label htmlFor="autoRefresh" className="text-small text-secondary">
-                Auto Refresh (10s)
-              </label>
+            <div className="flex items-center space-x-3">
+              <div className={`w-3 h-3 rounded-full ${wsConnected ? 'bg-green-400' : 'bg-red-400'}`}></div>
+              <span className="text-small text-secondary">
+                {wsConnected ? 'Live Connection' : 'Disconnected'}
+              </span>
+              {lastUpdateTime && (
+                <span className="text-xs text-gray-400">
+                  Last: {lastUpdateTime}
+                </span>
+              )}
             </div>
-            <button
-              onClick={fetchAllData}
-              disabled={loading}
-              className="linear-button-primary py-2 px-4 disabled:opacity-50"
-            >
-              {loading ? 'Refreshing...' : 'Refresh'}
-            </button>
+            <div className="flex items-center space-x-2">
+              <button
+                onClick={requestManualUpdate}
+                disabled={!wsConnected}
+                className="linear-button-secondary py-2 px-4 disabled:opacity-50"
+              >
+                Refresh Now
+              </button>
+            </div>
           </div>
+        </div>
+
+        {/* Real-time Trading Charts */}
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-8 mb-8">
+          <TradingChart 
+            symbol="BTC/USDT"
+            exchange="binance"
+            height={400}
+            interval="1h"
+          />
+          <TradingChart 
+            symbol="ETH/USDT"
+            exchange="binance"
+            height={400}
+            interval="1h"
+          />
         </div>
 
         {/* Portfolio Overview */}
@@ -299,20 +230,22 @@ export default function MonitoringPage() {
           <h2 className="text-h3 mb-6">System Status</h2>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="glass-light p-4 rounded-lg text-center">
+              <div className="text-2xl mb-2">{wsConnected ? '🟢' : '🔴'}</div>
+              <p className="text-small font-medium text-white">WebSocket</p>
+              <p className={`text-xs ${wsConnected ? 'text-green-400' : 'text-red-400'}`}>
+                {wsConnected ? 'Connected' : 'Disconnected'}
+              </p>
+            </div>
+            <div className="glass-light p-4 rounded-lg text-center">
               <div className="text-2xl mb-2">🟢</div>
-              <p className="text-small font-medium text-white">API Connection</p>
+              <p className="text-small font-medium text-white">API Server</p>
               <p className="text-xs text-green-400">Online</p>
             </div>
             <div className="glass-light p-4 rounded-lg text-center">
-              <div className="text-2xl mb-2">🟢</div>
-              <p className="text-small font-medium text-white">Database</p>
-              <p className="text-xs text-green-400">Connected</p>
-            </div>
-            <div className="glass-light p-4 rounded-lg text-center">
-              <div className="text-2xl mb-2">{autoRefresh ? '🔄' : '⏸️'}</div>
-              <p className="text-small font-medium text-white">Auto Refresh</p>
-              <p className={`text-xs ${autoRefresh ? 'text-green-400' : 'text-gray-400'}`}>
-                {autoRefresh ? 'Active' : 'Paused'}
+              <div className="text-2xl mb-2">⚡</div>
+              <p className="text-small font-medium text-white">Real-time Updates</p>
+              <p className={`text-xs ${wsConnected ? 'text-green-400' : 'text-gray-400'}`}>
+                {wsConnected ? 'Active (5s interval)' : 'Inactive'}
               </p>
             </div>
           </div>

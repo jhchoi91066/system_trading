@@ -1,117 +1,87 @@
 "use client";
 
 import { useState, useEffect } from 'react';
-
-interface Notification {
-  id: number;
-  title: string;
-  message: string;
-  notification_type: string;
-  priority: string;
-  is_read: boolean;
-  created_at: string;
-  data?: any;
-}
-
-interface NotificationStats {
-  total_notifications: number;
-  unread_notifications: number;
-}
+import { useWebSocket } from '@/contexts/WebSocketProvider';
+import { useAuth } from '@clerk/nextjs';
 
 export default function NotificationsPage() {
-  const [notifications, setNotifications] = useState<Notification[]>([]);
-  const [stats, setStats] = useState<NotificationStats>({ total_notifications: 0, unread_notifications: 0 });
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const { data, isConnected: wsConnected, error: wsError } = useWebSocket();
+  const { notifications: realtimeNotifications, portfolio_stats: realtimeStats } = data;
   const [filter, setFilter] = useState<'all' | 'unread' | 'trade' | 'risk' | 'system'>('all');
+  const [loadingAction, setLoadingAction] = useState(false); // For actions like mark as read
+  const [actionError, setActionError] = useState<string | null>(null);
+  const { getToken } = useAuth();
 
-  useEffect(() => {
-    fetchNotifications();
-    fetchNotificationStats();
-  }, [filter]);
-
-  const fetchNotifications = async () => {
-    try {
-      setLoading(true);
-      const unreadOnly = filter === 'unread';
-      const response = await fetch(`http://127.0.0.1:8000/notifications?limit=50&unread_only=${unreadOnly}`);
-      if (!response.ok) throw new Error('Failed to fetch notifications');
-      
-      let data = await response.json();
-      
-      // Filter by type if needed
-      if (filter !== 'all' && filter !== 'unread') {
-        data = data.filter((n: Notification) => n.notification_type === filter);
-      }
-      
-      setNotifications(data);
-    } catch (e: any) {
-      setError(`Failed to fetch notifications: ${e.message}`);
-    } finally {
-      setLoading(false);
-    }
+  const fetchWithAuth = async (url: string, options?: RequestInit) => {
+    const token = await getToken();
+    const headers = {
+      ...(options?.headers || {}),
+      'Authorization': `Bearer ${token}`,
+    };
+    return fetch(url, { ...options, headers });
   };
 
-  const fetchNotificationStats = async () => {
-    try {
-      const response = await fetch('http://127.0.0.1:8000/notifications/stats');
-      if (!response.ok) throw new Error('Failed to fetch notification stats');
-      const data = await response.json();
-      setStats(data);
-    } catch (e: any) {
-      console.error('Failed to fetch notification stats:', e.message);
-    }
+  // Filter notifications based on the selected filter
+  const filteredNotifications = realtimeNotifications.filter(notification => {
+    if (filter === 'all') return true;
+    if (filter === 'unread') return !notification.is_read;
+    return notification.notification_type === filter;
+  });
+
+  // Calculate stats from realtime data
+  const stats = {
+    total_notifications: realtimeNotifications.length,
+    unread_notifications: realtimeNotifications.filter(n => !n.is_read).length,
   };
 
   const markAsRead = async (notificationId: number) => {
+    setLoadingAction(true);
+    setActionError(null);
     try {
-      const response = await fetch(`http://127.0.0.1:8000/notifications/${notificationId}/read`, {
+      const response = await fetchWithAuth(`http://127.0.0.1:8000/notifications/${notificationId}/read`, {
         method: 'POST'
       });
       if (!response.ok) throw new Error('Failed to mark notification as read');
       
-      // Update local state
-      setNotifications(prev => 
-        prev.map(n => n.id === notificationId ? { ...n, is_read: true } : n)
-      );
-      
-      // Update stats
-      setStats(prev => ({
-        ...prev,
-        unread_notifications: Math.max(0, prev.unread_notifications - 1)
-      }));
+      // WebSocket will update the state, no need to manually update here
     } catch (e: any) {
-      setError(`Failed to mark notification as read: ${e.message}`);
+      setActionError(`Failed to mark notification as read: ${e.message}`);
+    } finally {
+      setLoadingAction(false);
     }
   };
 
   const markAllAsRead = async () => {
+    setLoadingAction(true);
+    setActionError(null);
     try {
-      const response = await fetch('http://127.0.0.1:8000/notifications/mark-all-read', {
+      const response = await fetchWithAuth('http://127.0.0.1:8000/notifications/mark-all-read', {
         method: 'POST'
       });
       if (!response.ok) throw new Error('Failed to mark all notifications as read');
       
-      // Update local state
-      setNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
-      setStats(prev => ({ ...prev, unread_notifications: 0 }));
+      // WebSocket will update the state, no need to manually update here
     } catch (e: any) {
-      setError(`Failed to mark all notifications as read: ${e.message}`);
+      setActionError(`Failed to mark all notifications as read: ${e.message}`);
+    } finally {
+      setLoadingAction(false);
     }
   };
 
   const createTestNotification = async () => {
+    setLoadingAction(true);
+    setActionError(null);
     try {
-      const response = await fetch('http://127.0.0.1:8000/notifications/test', {
+      const response = await fetchWithAuth('http://127.0.0.1:8000/notifications/test', {
         method: 'POST'
       });
       if (!response.ok) throw new Error('Failed to create test notification');
       
-      // Refresh notifications
-      fetchNotifications();
-      fetchNotificationStats();
+      // WebSocket will update the state, no need to manually update here
     } catch (e: any) {
-      setError(`Failed to create test notification: ${e.message}`);
+      setActionError(`Failed to create test notification: ${e.message}`);
+    } finally {
+      setLoadingAction(false);
     }
   };
 
@@ -135,17 +105,14 @@ export default function NotificationsPage() {
     }
   };
 
-  if (error) {
+  if (wsError || actionError) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="linear-card max-w-md mx-auto text-center">
           <h2 className="text-h3 text-red-400 mb-4">Error</h2>
-          <p className="text-body text-secondary mb-6">{error}</p>
+          <p className="text-body text-secondary mb-6">{wsError || actionError}</p>
           <button 
-            onClick={() => {
-              setError(null);
-              fetchNotifications();
-            }}
+            onClick={() => window.location.reload()} // Simple reload to attempt reconnect
             className="linear-button-primary py-2 px-4"
           >
             Try Again
@@ -164,7 +131,7 @@ export default function NotificationsPage() {
             <button
               onClick={createTestNotification}
               className="linear-button-secondary py-2 px-4"
-              disabled={loading}
+              disabled={loadingAction}
             >
               Create Test
             </button>
@@ -172,7 +139,7 @@ export default function NotificationsPage() {
               <button
                 onClick={markAllAsRead}
                 className="linear-button-primary py-2 px-4"
-                disabled={loading}
+                disabled={loadingAction}
               >
                 Mark All as Read
               </button>
@@ -219,12 +186,12 @@ export default function NotificationsPage() {
 
         {/* Notifications List */}
         <div className="space-y-4">
-          {loading ? (
+          {!wsConnected ? (
             <div className="linear-card text-center py-8">
-              <p className="text-body text-secondary">Loading notifications...</p>
+              <p className="text-body text-secondary">Connecting to real-time updates...</p>
             </div>
-          ) : notifications.length > 0 ? (
-            notifications.map((notification) => (
+          ) : filteredNotifications.length > 0 ? (
+            filteredNotifications.map((notification) => (
               <div
                 key={notification.id}
                 className={`linear-card cursor-pointer transition-opacity ${

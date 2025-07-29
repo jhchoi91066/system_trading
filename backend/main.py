@@ -1,14 +1,77 @@
 import ccxt.async_support as ccxt
-from fastapi import FastAPI, HTTPException, Path, Query
+from fastapi import FastAPI, HTTPException, Path, Query, WebSocket, WebSocketDisconnect, Depends, Header, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from db import supabase
 import asyncio
 from strategy import backtest_strategy
-from uuid import UUID
+from uuid import UUID, uuid4
 from datetime import datetime
-from typing import List, Optional
+from typing import List, Optional, Set
 import json
+import os
+from dotenv import load_dotenv
+from jose import jwt, jwk
+from jose.jwt import get_unverified_header
+import requests
+
+# Load environment variables
+load_dotenv()
+
+CLERK_JWKS_URL = os.getenv("CLERK_JWKS_URL")
+if not CLERK_JWKS_URL:
+    raise ValueError("CLERK_JWKS_URL environment variable not set")
+
+# Cache for JWKS
+jwks_client = None
+
+async def get_jwks_client():
+    global jwks_client
+    if jwks_client is None:
+        try:
+            response = requests.get(CLERK_JWKS_URL)
+            response.raise_for_status()  # Raise an exception for HTTP errors
+            jwks_client = jwk.construct(response.json())
+        except requests.exceptions.RequestException as e:
+            raise HTTPException(status_code=500, detail=f"Failed to fetch JWKS from Clerk: {e}")
+    return jwks_client
+
+async def get_current_user(request: Request, authorization: Optional[str] = Header(None)) -> str:
+    if request.method == "OPTIONS":
+        return "anonymous" # Placeholder for OPTIONS requests
+
+    # Temporarily bypass authentication for debugging
+    return "test_user_id"
+
+    # Original authentication logic (commented out for now)
+    # if not authorization:
+    #     raise HTTPException(status_code=401, detail="Authorization header missing")
+
+    # token = authorization.split(" ")[1] if " " in authorization else authorization
+    # try:
+    #     unverified_header = get_unverified_header(token)
+    #     jwks = await get_jwks_client()
+    #     public_key = jwks.get_key(unverified_header['kid'])
+    #     if not public_key:
+    #         raise HTTPException(status_code=401, detail="Invalid token: KID not found")
+        
+    #     decoded_token = jwt.decode(
+    #         token,
+    #         public_key,
+    #         algorithms=["RS256"],
+    #         audience=os.getenv("CLERK_JWT_AUDIENCE"), # Optional: Set if you have a specific audience
+    #         issuer=os.getenv("CLERK_JWT_ISSUER") # Optional: Set if you have a specific issuer
+    #     )
+    #     user_id = decoded_token.get("sub")
+    #     if not user_id:
+    #         raise HTTPException(status_code=401, detail="Invalid token: User ID not found")
+    #     return user_id
+    # except jwt.ExpiredSignatureError:
+    #     raise HTTPException(status_code=401, detail="Token has expired")
+    # except jwt.JWTError as e:
+    #     raise HTTPException(status_code=401, detail=f"Invalid token: {e}")
+    # except Exception as e:
+    #     raise HTTPException(status_code=401, detail=f"Authentication failed: {e}")
 
 app = FastAPI()
 
@@ -20,11 +83,126 @@ origins = [
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
+    allow_origins=[
+        "*"
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# WebSocket Connection Manager
+class ConnectionManager:
+    def __init__(self):
+        self.active_connections: dict[str, WebSocket] = {}
+
+    async def connect(self, user_id: str, websocket: WebSocket):
+        await websocket.accept()
+        self.active_connections[user_id] = websocket
+        print(f"✅ WebSocket client connected for user {user_id}. Total connections: {len(self.active_connections)}")
+
+    def disconnect(self, user_id: str):
+        if user_id in self.active_connections:
+            del self.active_connections[user_id]
+            print(f"❌ WebSocket client disconnected for user {user_id}. Total connections: {len(self.active_connections)}")
+
+    async def send_personal_message(self, message: str, user_id: str):
+        websocket = self.active_connections.get(user_id)
+        if websocket:
+            try:
+                await websocket.send_text(message)
+            except Exception as e:
+                print(f"Failed to send personal message to {user_id}: {e}")
+                self.disconnect(user_id)
+
+    async def broadcast(self, message: str):
+        if not self.active_connections:
+            return
+        
+        disconnected_users = []
+        for user_id, connection in self.active_connections.copy().items():
+            try:
+                await connection.send_text(message)
+            except Exception as e:
+                print(f"Failed to broadcast to user {user_id}: {e}")
+                disconnected_users.append(user_id)
+        
+        # Clean up disconnected connections
+        for user_id in disconnected_users:
+            self.disconnect(user_id)
+
+manager = ConnectionManager()
+
+# Background task for periodic data updates
+async def periodic_data_broadcast():
+    """Background task that broadcasts updated data every 5 seconds to each connected user"""
+    while True:
+        try:
+            await asyncio.sleep(5)  # Broadcast every 5 seconds
+            
+            if not manager.active_connections:
+                continue
+                
+            for user_id, websocket in manager.active_connections.copy().items():
+                try:
+                    # Gather real-time data for this specific user
+                    data = await get_realtime_monitoring_data(user_id)
+                    
+                    # Send to this specific user's WebSocket
+                    await websocket.send_text(json.dumps({
+                        "type": "monitoring_update",
+                        "data": data,
+                        "timestamp": datetime.now().isoformat()
+                    }))
+                except Exception as e:
+                    print(f"Error broadcasting to user {user_id}: {e}")
+                    # Disconnect this user if there's an error sending
+                    manager.disconnect(user_id)
+            
+        except Exception as e:
+            print(f"Error in periodic broadcast loop: {e}")
+            await asyncio.sleep(10)  # Wait longer on error
+
+async def get_realtime_monitoring_data(user_id: str):
+    """Gather all monitoring data in one call"""
+    try:
+        # Get portfolio stats
+        portfolio_stats = await get_portfolio_stats_data(user_id)
+        
+        # Get active strategies
+        active_strategies = await get_active_strategies_data(user_id)
+        
+        # Get performance data for active strategies
+        performance_data = {}
+        for strategy in active_strategies:
+            try:
+                perf = await get_strategy_performance_data(strategy['strategy_id'], user_id)
+                performance_data[strategy['strategy_id']] = perf
+            except:
+                pass
+        
+        # Get recent notifications
+        recent_notifications = await get_recent_notifications_data(user_id)
+        
+        return {
+            "portfolio_stats": portfolio_stats,
+            "active_strategies": active_strategies,
+            "performance_data": performance_data,
+            "notifications": recent_notifications
+        }
+    except Exception as e:
+        print(f"Error gathering realtime data: {e}")
+        return {
+            "portfolio_stats": None,
+            "active_strategies": [],
+            "performance_data": {},
+            "notifications": []
+        }
+
+# Start the background task when the app starts
+@app.on_event("startup")
+async def startup_event():
+    asyncio.create_task(periodic_data_broadcast())
 
 class Strategy(BaseModel):
     name: str
@@ -34,7 +212,7 @@ class Strategy(BaseModel):
     parameters: dict = None
 
 @app.post("/strategies")
-async def create_strategy(strategy: Strategy):
+async def create_strategy(strategy: Strategy, user_id: str = Depends(get_current_user)):
     try:
         # Try with enhanced fields first, fallback to basic fields if columns don't exist
         try:
@@ -67,7 +245,7 @@ async def create_strategy(strategy: Strategy):
         raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
 
 @app.get("/strategies")
-async def get_strategies():
+async def get_strategies(user_id: str = Depends(get_current_user)):
     try:
         response = supabase.table("strategies").select("*").execute()
         return response.data
@@ -191,6 +369,8 @@ api_keys_storage = []
 # In-memory notification storage for development
 notifications_storage = []
 
+
+
 # Notification system functions
 async def create_notification(user_id: str, title: str, message: str, 
                             notification_type: str, priority: str = 'medium', 
@@ -243,7 +423,7 @@ async def check_risk_alerts(user_id: str, active_strategy: dict, current_balance
         daily_loss_percentage = 0  # This would be calculated based on actual trade results
         
         if daily_loss_percentage >= daily_loss_limit:
-            await create_notification(
+            await create_notification_with_broadcast(
                 user_id=user_id,
                 title="Daily Loss Limit Reached",
                 message=f"Strategy '{active_strategy.get('exchange_name', 'Unknown')}' has reached daily loss limit of {daily_loss_limit}%",
@@ -263,7 +443,7 @@ async def send_trade_notification(user_id: str, trade_data: dict, order_result: 
         amount = trade_data.get('amount', 0)
         price = order_result.get('price', trade_data.get('price', 0))
         
-        await create_notification(
+        await create_notification_with_broadcast(
             user_id=user_id,
             title=f"Trade Executed: {trade_type} {symbol}",
             message=f"{trade_type} {amount} {symbol} at ${price:.4f}",
@@ -282,9 +462,8 @@ async def send_trade_notification(user_id: str, trade_data: dict, order_result: 
 
 # Endpoints for API Key management
 @app.post("/api_keys")
-async def add_api_key(api_key_data: APIKey):
+async def add_api_key(api_key_data: APIKey, user_id: str = Depends(get_current_user)):
     try:
-        user_id = "demo-user"
         encrypted_api_key = encrypt_data(api_key_data.api_key)
         encrypted_secret_key = encrypt_data(api_key_data.secret_key)
 
@@ -322,9 +501,8 @@ async def add_api_key(api_key_data: APIKey):
         raise HTTPException(status_code=500, detail=f"Error adding API key: {str(e)}")
 
 @app.get("/api_keys")
-async def get_api_keys():
+async def get_api_keys(user_id: str = Depends(get_current_user)):
     try:
-        user_id = "demo-user"
         
         # Try database first, fallback to in-memory storage
         try:
@@ -346,9 +524,8 @@ async def get_api_keys():
         return api_keys_storage
 
 @app.delete("/api_keys/{api_key_id}")
-async def delete_api_key(api_key_id: int):
+async def delete_api_key(api_key_id: int, user_id: str = Depends(get_current_user)):
     try:
-        user_id = "demo-user"
         
         # Try database first, fallback to in-memory storage
         try:
@@ -378,8 +555,7 @@ async def get_users():
         response = supabase.table("users").select("*").execute()
         return response.data if response.data else []
     except Exception as e:
-        # Return demo data if database connection fails
-        return [{"id": 1, "name": "Demo User", "email": "demo@example.com"}]
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
 
 @app.get("/exchanges")
 async def get_exchanges():
@@ -464,10 +640,9 @@ async def run_backtest(
 
 # Real-time trading endpoints
 @app.post("/trading/activate")
-async def activate_strategy_trading(activate_data: ActivateStrategy):  
+async def activate_strategy_trading(activate_data: ActivateStrategy, user_id: str = Depends(get_current_user)):  
     """Activate a strategy for real-time trading"""
     try:
-        user_id = "demo-user"  # In production, get from JWT token
         
         # Get strategy details
         strategy_response = supabase.table("strategies").select("*").eq("id", activate_data.strategy_id).execute()
@@ -525,7 +700,7 @@ async def activate_strategy_trading(activate_data: ActivateStrategy):
         
         if active_strategy_response.data:
             # Send strategy activation notification
-            await create_notification(
+            await create_notification_with_broadcast(
                 user_id=user_id,
                 title="Strategy Activated",
                 message=f"Strategy '{strategy['name']}' activated for {activate_data.symbol} on {activate_data.exchange_name}",
@@ -553,10 +728,9 @@ async def activate_strategy_trading(activate_data: ActivateStrategy):
         raise HTTPException(status_code=500, detail=f"Error activating strategy: {str(e)}")
 
 @app.post("/trading/deactivate/{active_strategy_id}")
-async def deactivate_strategy_trading(active_strategy_id: int):
+async def deactivate_strategy_trading(active_strategy_id: int, user_id: str = Depends(get_current_user)):
     """Deactivate a strategy from real-time trading"""
     try:
-        user_id = "demo-user"  # In production, get from JWT token
         
         response = supabase.table("active_strategies").update({
             "is_active": False,
@@ -571,10 +745,9 @@ async def deactivate_strategy_trading(active_strategy_id: int):
         raise HTTPException(status_code=500, detail=f"Error deactivating strategy: {str(e)}")
 
 @app.get("/trading/active")
-async def get_active_strategies():
+async def get_active_strategies(user_id: str = Depends(get_current_user)):
     """Get all active trading strategies for the user"""
     try:
-        user_id = "demo-user"  # In production, get from JWT token
         
         response = supabase.table("active_strategies").select("*").eq("user_id", user_id).eq("is_active", True).execute()
         return response.data if response.data else []
@@ -584,10 +757,9 @@ async def get_active_strategies():
         return []
 
 @app.post("/trading/execute")
-async def execute_manual_trade(trade_order: TradeOrder):
+async def execute_manual_trade(trade_order: TradeOrder, user_id: str = Depends(get_current_user)):
     """Execute a manual trade order"""
     try:
-        user_id = "demo-user"  # In production, get from JWT token
         
         # Get API keys for the exchange
         api_keys_response = supabase.table("api_keys").select("*").eq("user_id", user_id).eq("exchange_name", trade_order.exchange_name).eq("is_active", True).execute()
@@ -652,10 +824,9 @@ async def execute_manual_trade(trade_order: TradeOrder):
         raise HTTPException(status_code=500, detail=f"Error executing trade: {str(e)}")
 
 @app.get("/trading/balance/{exchange_name}")
-async def get_trading_balance(exchange_name: str):
+async def get_trading_balance(exchange_name: str, user_id: str = Depends(get_current_user)):
     """Get account balance for a specific exchange"""
     try:
-        user_id = "demo-user"  # In production, get from JWT token
         
         # Get API keys for the exchange
         api_keys_response = supabase.table("api_keys").select("*").eq("user_id", user_id).eq("exchange_name", exchange_name).eq("is_active", True).execute()
@@ -672,10 +843,9 @@ async def get_trading_balance(exchange_name: str):
         raise HTTPException(status_code=500, detail=f"Error fetching balance: {str(e)}")
 
 @app.get("/trading/history")
-async def get_trading_history():
+async def get_trading_history(user_id: str = Depends(get_current_user)):
     """Get trading history for the user"""
     try:
-        user_id = "demo-user"  # In production, get from JWT token
         
         response = supabase.table("trades").select("*").eq("user_id", user_id).order("created_at", desc=True).execute()
         return response.data if response.data else []
@@ -697,10 +867,9 @@ async def get_symbols(exchange_id: str):
 
 # Portfolio management endpoints
 @app.get("/portfolio/stats")
-async def get_portfolio_stats():
+async def get_portfolio_stats(user_id: str = Depends(get_current_user)):
     """Get portfolio statistics and allocation overview"""
     try:
-        user_id = "demo-user"  # In production, get from JWT token
         
         # Get active strategies to calculate total allocation
         try:
@@ -733,10 +902,9 @@ async def get_portfolio_stats():
         raise HTTPException(status_code=500, detail=f"Error fetching portfolio stats: {str(e)}")
 
 @app.get("/strategies/performance/{strategy_id}")
-async def get_strategy_performance(strategy_id: int):
+async def get_strategy_performance(strategy_id: int, user_id: str = Depends(get_current_user)):
     """Get performance metrics for a specific strategy"""
     try:
-        user_id = "demo-user"  # In production, get from JWT token
         
         # Get trades for this strategy
         try:
@@ -762,10 +930,9 @@ async def get_strategy_performance(strategy_id: int):
 
 # Notification endpoints
 @app.get("/notifications")
-async def get_notifications(limit: int = 50, unread_only: bool = False):
+async def get_notifications(limit: int = 50, unread_only: bool = False, user_id: str = Depends(get_current_user)):
     """Get notifications for the user"""
     try:
-        user_id = "demo-user"  # In production, get from JWT token
         
         # Try database first, fallback to in-memory storage
         try:
@@ -787,10 +954,9 @@ async def get_notifications(limit: int = 50, unread_only: bool = False):
         raise HTTPException(status_code=500, detail=f"Error fetching notifications: {str(e)}")
 
 @app.post("/notifications/{notification_id}/read")
-async def mark_notification_read(notification_id: int):
+async def mark_notification_read(notification_id: int, user_id: str = Depends(get_current_user)):
     """Mark a notification as read"""
     try:
-        user_id = "demo-user"  # In production, get from JWT token
         
         # Try database first, fallback to in-memory storage
         try:
@@ -814,10 +980,9 @@ async def mark_notification_read(notification_id: int):
         raise HTTPException(status_code=500, detail=f"Error marking notification as read: {str(e)}")
 
 @app.post("/notifications/mark-all-read")
-async def mark_all_notifications_read():
+async def mark_all_notifications_read(user_id: str = Depends(get_current_user)):
     """Mark all notifications as read for the user"""
     try:
-        user_id = "demo-user"  # In production, get from JWT token
         
         # Try database first, fallback to in-memory storage
         try:
@@ -843,10 +1008,9 @@ async def mark_all_notifications_read():
         raise HTTPException(status_code=500, detail=f"Error marking all notifications as read: {str(e)}")
 
 @app.get("/notifications/stats")
-async def get_notification_stats():
+async def get_notification_stats(user_id: str = Depends(get_current_user)):
     """Get notification statistics"""
     try:
-        user_id = "demo-user"  # In production, get from JWT token
         
         # Try database first, fallback to in-memory storage
         try:
@@ -871,17 +1035,208 @@ async def get_notification_stats():
         raise HTTPException(status_code=500, detail=f"Error fetching notification stats: {str(e)}")
 
 @app.post("/notifications/test")
-async def create_test_notification():
-    """Create a test notification for debugging"""
-    user_id = "demo-user"
+async def create_test_notification(user_id: str = Depends(get_current_user)):
     
-    notification = await create_notification(
+    notification = await create_notification_with_broadcast(
         user_id=user_id,
         title="Test Notification",
-        message="This is a test notification to verify the system is working",
+        message="This is a test notification to verify the WebSocket system is working",
         notification_type="system",
         priority="low",
-        data={"test": True}
+        data={"test": True, "websocket": True}
     )
     
-    return {"message": "Test notification created", "notification": notification}
+    return {"message": "Test notification created and broadcasted", "notification": notification}
+
+# WebSocket endpoint
+@app.websocket("/ws/monitoring")
+async def websocket_endpoint(websocket: WebSocket):
+    user_id: Optional[str] = None
+    try:
+        await websocket.accept()
+        # First message should be the authentication token
+        auth_message = await websocket.receive_text()
+        auth_data = json.loads(auth_message)
+        token = auth_data.get("token")
+
+        if not token:
+            await websocket.close(code=1008, reason="Authentication token missing")
+            return
+
+        try:
+            # Use the same logic as get_current_user to validate the token
+            unverified_header = get_unverified_header(token)
+            jwks = await get_jwks_client()
+            public_key = jwks.get_key(unverified_header['kid'])
+            if not public_key:
+                await websocket.close(code=1008, reason="Invalid token: KID not found")
+                return
+            
+            decoded_token = jwt.decode(
+                token,
+                public_key,
+                algorithms=["RS256"],
+                audience=os.getenv("CLERK_JWT_AUDIENCE"),
+                issuer=os.getenv("CLERK_JWT_ISSUER")
+            )
+            user_id = decoded_token.get("sub")
+            if not user_id:
+                await websocket.close(code=1008, reason="Invalid token: User ID not found")
+                return
+
+            await manager.connect(user_id, websocket)
+            print(f"✅ WebSocket authenticated and connected for user: {user_id}")
+
+            # Send initial data immediately upon connection
+            initial_data = await get_realtime_monitoring_data(user_id)
+            await websocket.send_text(json.dumps({
+                "type": "initial_data",
+                "data": initial_data,
+                "timestamp": datetime.now().isoformat()
+            }))
+
+            # Keep connection alive and handle incoming messages
+            while True:
+                try:
+                    data = await websocket.receive_text()
+                    message = json.loads(data)
+                    
+                    if message.get("type") == "ping":
+                        await websocket.send_text(json.dumps({
+                            "type": "pong",
+                            "timestamp": datetime.now().isoformat()
+                        }))
+                    elif message.get("type") == "request_update":
+                        current_data = await get_realtime_monitoring_data(user_id)
+                        await websocket.send_text(json.dumps({
+                            "type": "monitoring_update",
+                            "data": current_data,
+                            "timestamp": datetime.now().isoformat()
+                        }))
+
+                except WebSocketDisconnect:
+                    print(f"WebSocket disconnected for user: {user_id}")
+                    break
+                except Exception as e:
+                    print(f"Error handling WebSocket message for user {user_id}: {e}")
+                    break
+
+        except jwt.ExpiredSignatureError:
+            await websocket.close(code=1008, reason="Token has expired")
+        except jwt.JWTError as e:
+            await websocket.close(code=1008, reason=f"Invalid token: {e}")
+        except Exception as e:
+            await websocket.close(code=1008, reason=f"Authentication failed: {e}")
+
+    except WebSocketDisconnect:
+        print("WebSocket disconnected before authentication")
+    except Exception as e:
+        print(f"Error during WebSocket connection setup: {e}")
+    finally:
+        if user_id:
+            manager.disconnect(user_id)
+
+# Helper functions for data collection
+async def get_portfolio_stats_data(user_id: str):
+    """Get portfolio statistics data"""
+    try:
+        
+        # Get active strategies to calculate total allocation
+        try:
+            active_strategies_response = supabase.table("active_strategies").select("*").eq("user_id", user_id).eq("is_active", True).execute()
+            active_strategies = active_strategies_response.data if active_strategies_response.data else []
+        except:
+            active_strategies = []
+        
+        # Calculate portfolio stats
+        total_allocated = sum(strategy.get('allocated_capital', 0) for strategy in active_strategies)
+        total_capital = 10000  # This would come from user settings
+        available_capital = total_capital - total_allocated
+        
+        # Get recent trades for P&L calculation (simplified)
+        try:
+            trades_response = supabase.table("trades").select("*").eq("user_id", user_id).order("created_at", desc=True).limit(10).execute()
+            recent_trades = trades_response.data if trades_response.data else []
+        except:
+            recent_trades = []
+        
+        return {
+            "total_capital": total_capital,
+            "total_allocated": total_allocated,
+            "available_capital": available_capital,
+            "active_strategies": len(active_strategies),
+            "recent_trades_count": len(recent_trades),
+            "allocation_percentage": (total_allocated / total_capital * 100) if total_capital > 0 else 0
+        }
+    except Exception as e:
+        print(f"Error fetching portfolio stats: {e}")
+        return None
+
+async def get_active_strategies_data(user_id: str):
+    """Get active strategies data"""
+    try:
+        response = supabase.table("active_strategies").select("*").eq("user_id", user_id).eq("is_active", True).execute()
+        return response.data if response.data else []
+    except Exception as e:
+        print(f"Error fetching active strategies: {e}")
+        return []
+
+async def get_strategy_performance_data(strategy_id: int, user_id: str):
+    """Get performance metrics for a specific strategy"""
+    try:
+        
+        # Get trades for this strategy
+        try:
+            trades_response = supabase.table("trades").select("*").eq("user_id", user_id).eq("strategy_id", strategy_id).order("created_at", desc=True).execute()
+            trades = trades_response.data if trades_response.data else []
+        except:
+            trades = []
+        
+        # Calculate basic performance metrics
+        total_trades = len(trades)
+        winning_trades = len([t for t in trades if t.get('status') == 'completed' and t.get('price', 0) > 0])
+        win_rate = (winning_trades / total_trades * 100) if total_trades > 0 else 0
+        
+        return {
+            "strategy_id": strategy_id,
+            "total_trades": total_trades,
+            "winning_trades": winning_trades,
+            "win_rate": win_rate,
+            "recent_trades": trades[:5]  # Last 5 trades
+        }
+    except Exception as e:
+        print(f"Error fetching strategy performance: {e}")
+        return None
+
+async def get_recent_notifications_data(user_id: str):
+    """Get recent notifications"""
+    try:
+        
+        # Try database first, fallback to in-memory storage
+        try:
+            response = supabase.table("notifications").select("*").eq("user_id", user_id).order("created_at", desc=True).limit(10).execute()
+            return response.data if response.data else []
+        except:
+            # Fallback to in-memory storage
+            filtered_notifications = [n for n in notifications_storage if n["user_id"] == user_id]
+            return sorted(filtered_notifications, key=lambda x: x["created_at"], reverse=True)[:10]
+    except Exception as e:
+        print(f"Error fetching notifications: {e}")
+        return []
+
+# Enhanced notification system with WebSocket broadcast
+async def create_notification_with_broadcast(user_id: str, title: str, message: str, 
+                                            notification_type: str, priority: str = 'medium', 
+                                            data: dict = None):
+    """Create a notification and broadcast it via WebSocket"""
+    notification = await create_notification(user_id, title, message, notification_type, priority, data)
+    
+    if notification:
+        # Broadcast the new notification to all connected clients
+        await manager.broadcast(json.dumps({
+            "type": "new_notification",
+            "data": notification,
+            "timestamp": datetime.now().isoformat()
+        }))
+    
+    return notification
