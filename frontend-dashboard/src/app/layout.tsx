@@ -13,6 +13,7 @@ import I18nProvider from "./providers/I18nProvider";
 import { WebSocketProvider } from "@/contexts/WebSocketProvider";
 import LanguageSelector from "@/components/LanguageSelector";
 import { LocalizedNavigationLinks, LocalizedAuthButtons, LocalizedTitle } from "@/components/LocalizedNavigation";
+import NavigationHeader from "@/components/NavigationHeader";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -60,24 +61,6 @@ function MainLayout({ children }: { children: React.ReactNode }) {
   );
 }
 
-function NavigationHeader() {
-  return (
-    <header className="linear-nav p-6 border-b border-opacity-10 border-white">
-      <div className="max-w-7xl mx-auto flex items-center justify-between">
-        <div className="flex items-center space-x-8">
-          <LocalizedTitle />
-          <SignedIn>
-            <LocalizedNavigationLinks />
-          </SignedIn>
-        </div>
-        <div className="flex items-center space-x-4">
-          <LanguageSelector />
-          <AuthButtons />
-        </div>
-      </div>
-    </header>
-  );
-}
 
 function AuthButtons() {
   return (

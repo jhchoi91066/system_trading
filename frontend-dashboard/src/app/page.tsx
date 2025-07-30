@@ -6,6 +6,7 @@ import { useAuth } from '@clerk/nextjs';
 import TradingChart from '@/components/TradingChart';
 import { useWebSocket } from '@/contexts/WebSocketProvider';
 import { LocalizedPageTitle, LocalizedSectionTitle, LocalizedSelectLabel, LocalizedButton, LocalizedTableHeader } from '@/components/LocalizedPage';
+import { MobileContainer, MobileCard, MobileStatsGrid } from '@/components/MobileOptimized';
 import NoSSR from '@/components/NoSSR';
 
 export default function Home() {

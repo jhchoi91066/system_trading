@@ -9,6 +9,9 @@ const resources = {
       // Navigation
       'nav.dashboard': 'Dashboard',
       'nav.strategies': 'Strategies',
+      'nav.backtest': 'Backtest',
+      'nav.tradingHistory': 'Trading History',
+      'nav.fundManagement': 'Fund Management',
       'nav.apiKeys': 'API Keys',
       'nav.monitoring': 'Monitoring',
       'nav.notifications': 'Notifications',
@@ -119,6 +122,9 @@ const resources = {
       // Navigation
       'nav.dashboard': '대시보드',
       'nav.strategies': '전략',
+      'nav.backtest': '백테스트',
+      'nav.tradingHistory': '거래 내역',
+      'nav.fundManagement': '자금 관리',
       'nav.apiKeys': 'API 키',
       'nav.monitoring': '모니터링',
       'nav.notifications': '알림',

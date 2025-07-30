@@ -2,3 +2,23 @@ venv/
 __pycache__/
 .env
 *.pyc
+
+# Log files
+*.log
+*.pid
+
+# Test files
+test_chart.html
+test_websocket.py
+
+# Data directories
+backend/data/
+
+# Next.js build output
+.next/
+
+# Node modules
+node_modules/
+
+# Local environment variables
+.env.local

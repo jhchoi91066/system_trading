@@ -81,17 +81,23 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({ children }
   const { getToken, isLoaded, isSignedIn } = useAuth();
 
   const ws = useRef<WebSocket | null>(null);
+  const reconnectTimeout = useRef<NodeJS.Timeout | null>(null);
+  const reconnectAttempts = useRef(0);
+  const maxReconnectAttempts = 5;
 
-  useEffect(() => {
-    if (!isLoaded || !isSignedIn) return;
+  const connectWs = async () => {
+    const token = await getToken();
+    if (!token) {
+      setError("Authentication token not available.");
+      return;
+    }
 
-    const connectWs = async () => {
-      const token = await getToken();
-      if (!token) {
-        setError("Authentication token not available.");
-        return;
-      }
+    // Close existing connection if any
+    if (ws.current) {
+      ws.current.close();
+    }
 
+    try {
       ws.current = new WebSocket('ws://127.0.0.1:8000/ws/monitoring');
       const currentWs = ws.current;
 
@@ -99,25 +105,39 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({ children }
         console.log('✅ WebSocket connected');
         setIsConnected(true);
         setError(null);
-        // Send the token as the first message
-        currentWs.send(JSON.stringify({ type: "auth", token: token }));
+        reconnectAttempts.current = 0;
+        
+        // Send simplified auth message to avoid "control frame too long" error
+        currentWs.send(JSON.stringify({ type: "auth" }));
       };
 
       currentWs.onmessage = (event) => {
         try {
           const message = JSON.parse(event.data);
-          console.log('Received WebSocket message:', message.type, message.data);
+          console.log('Received WebSocket message:', message.type);
           
           switch (message.type) {
             case 'initial_data':
             case 'monitoring_update':
-              setData(prevData => ({ ...prevData, ...message.data }));
+              if (message.data && typeof message.data === 'object') {
+                setData(prevData => ({
+                  ...prevData,
+                  portfolio_stats: message.data.portfolio_stats || prevData.portfolio_stats,
+                  active_strategies: Array.isArray(message.data.active_strategies) ? message.data.active_strategies : prevData.active_strategies,
+                  performance_data: message.data.performance_data && typeof message.data.performance_data === 'object' ? 
+                    message.data.performance_data : prevData.performance_data,
+                  notifications: Array.isArray(message.data.notifications) ? message.data.notifications : prevData.notifications,
+                }));
+              }
               break;
             case 'new_notification':
               setData(prevData => ({
                 ...prevData,
                 notifications: [message.data, ...prevData.notifications],
               }));
+              break;
+            case 'pong':
+              console.log('Received pong from server');
               break;
             default:
               console.warn('Unknown WebSocket message type:', message.type);
@@ -129,30 +149,65 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({ children }
 
       currentWs.onerror = (event) => {
         console.error('WebSocket error:', event);
-        setError('WebSocket connection failed. Real-time updates are disabled.');
+        setError('WebSocket connection failed. Attempting to reconnect...');
         setIsConnected(false);
       };
 
-      currentWs.onclose = () => {
-        console.log('❌ WebSocket disconnected');
+      currentWs.onclose = (event) => {
+        console.log('❌ WebSocket disconnected', event.code, event.reason);
         setIsConnected(false);
-        // Optionally, you can implement a reconnect mechanism here
+        
+        // Implement reconnection with exponential backoff
+        if (reconnectAttempts.current < maxReconnectAttempts) {
+          reconnectAttempts.current++;
+          const delay = Math.pow(2, reconnectAttempts.current) * 1000; // Exponential backoff
+          console.log(`Reconnecting in ${delay}ms (attempt ${reconnectAttempts.current}/${maxReconnectAttempts})`);
+          
+          reconnectTimeout.current = setTimeout(() => {
+            if (isLoaded && isSignedIn) {
+              connectWs();
+            }
+          }, delay);
+        } else {
+          setError('WebSocket connection failed after multiple attempts. Real-time updates are disabled.');
+        }
       };
 
-      // Cleanup on component unmount
-      return () => {
-        currentWs.close();
-      };
-    };
+    } catch (error) {
+      console.error('Failed to create WebSocket connection:', error);
+      setError('Failed to establish WebSocket connection.');
+      setIsConnected(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!isLoaded || !isSignedIn) return;
 
     connectWs();
 
+    // Cleanup function
     return () => {
+      if (reconnectTimeout.current) {
+        clearTimeout(reconnectTimeout.current);
+      }
       if (ws.current) {
         ws.current.close();
       }
     };
-  }, [isLoaded, isSignedIn, getToken]);
+  }, [isLoaded, isSignedIn]);
+
+  // Heartbeat to keep connection alive
+  useEffect(() => {
+    if (!isConnected) return;
+
+    const heartbeatInterval = setInterval(() => {
+      if (ws.current && ws.current.readyState === WebSocket.OPEN) {
+        ws.current.send(JSON.stringify({ type: "ping" }));
+      }
+    }, 30000); // Send ping every 30 seconds
+
+    return () => clearInterval(heartbeatInterval);
+  }, [isConnected]);
 
   const sendMessage = (message: any) => {
     if (ws.current && ws.current.readyState === WebSocket.OPEN) {

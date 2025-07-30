@@ -23,6 +23,11 @@ export default function MonitoringPage() {
   };
 
   const getStrategyStatus = (strategy: any) => { // Use 'any' for now, or import types from WebSocketProvider
+    // Safe access to performanceData
+    if (!performanceData || !strategy?.strategy_id) {
+      return { status: 'Loading...', color: 'text-gray-400' };
+    }
+    
     const performance = performanceData[strategy.strategy_id];
     if (!performance) return { status: 'Loading...', color: 'text-gray-400' };
     
@@ -135,18 +140,25 @@ export default function MonitoringPage() {
           {activeStrategies.length > 0 ? (
             <div className="space-y-4">
               {activeStrategies.map((strategy) => {
-                const performance = performanceData[strategy.strategy_id];
+                // Safe access to performanceData
+                const performance = performanceData && strategy?.strategy_id ? 
+                  performanceData[strategy.strategy_id] : null;
                 const status = getStrategyStatus(strategy);
+                
+                // Skip rendering if strategy data is incomplete
+                if (!strategy || !strategy.id || !strategy.strategy_id) {
+                  return null;
+                }
                 
                 return (
                   <div key={strategy.id} className="glass-medium p-6 rounded-lg">
                     <div className="flex justify-between items-start mb-4">
                       <div>
                         <h3 className="text-body font-medium text-white mb-2">
-                          {strategy.exchange_name.toUpperCase()} - {strategy.symbol}
+                          {strategy.exchange_name ? strategy.exchange_name.toUpperCase() : 'Unknown'} - {strategy.symbol || 'Unknown'}
                         </h3>
                         <p className="text-small text-secondary">
-                          Strategy ID: {strategy.strategy_id} | Capital: ${strategy.allocated_capital.toLocaleString()}
+                          Strategy ID: {strategy.strategy_id} | Capital: ${strategy.allocated_capital ? strategy.allocated_capital.toLocaleString() : '0'}
                         </p>
                       </div>
                       <div className="text-right">
