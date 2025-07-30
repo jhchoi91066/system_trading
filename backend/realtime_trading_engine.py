@@ -1,12 +1,13 @@
 """
 실시간 트레이딩 엔진
-- 바이낸스에서 실시간 OHLCV 데이터 수집
+- 다중 거래소(바이낸스, BingX) 지원
+- 실시간 OHLCV 데이터 수집
 - 새로운 캔들 생성 시마다 지표 계산 및 신호 감지
 - 자동 주문 실행
+- 데모 트레이딩 및 실거래 모드 지원
 """
 
 import asyncio
-import ccxt.async_support as ccxt
 import logging
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Callable
@@ -15,6 +16,7 @@ from persistent_storage import persistent_storage
 from advanced_indicators import AdvancedIndicators
 from position_manager import position_manager, Position
 from risk_manager import risk_manager, RiskLimits
+from exchange_adapter import ExchangeFactory, ExchangeAdapter
 from strategy import (
     bollinger_bands_strategy,
     macd_stochastic_strategy,
@@ -40,23 +42,27 @@ class RealtimeTradingEngine:
         }
         self.running = False
         
-    async def initialize_exchange(self, exchange_name: str, api_key: str, secret: str, sandbox: bool = True):
-        """거래소 초기화"""
+    async def initialize_exchange(self, exchange_name: str, api_key: str, secret: str, demo_mode: bool = True):
+        """거래소 초기화 (다중 거래소 지원)"""
         try:
-            if exchange_name.lower() == 'binance':
-                exchange = ccxt.binance({
-                    'apiKey': api_key,
-                    'secret': secret,
-                    'sandbox': sandbox,  # 테스트넷 사용
-                    'enableRateLimit': True,
-                })
+            # ExchangeAdapter를 사용하여 거래소 생성
+            adapter = ExchangeFactory.create_adapter(exchange_name.lower(), demo_mode=demo_mode)
+            
+            # 자격 증명으로 초기화
+            credentials = {
+                'api_key': api_key,
+                'secret': secret
+            }
+            
+            success = await adapter.initialize(credentials)
+            
+            if success:
+                self.exchanges[exchange_name] = adapter
+                logger.info(f"Exchange {exchange_name} initialized successfully (demo: {demo_mode})")
+                return True
             else:
-                raise ValueError(f"Unsupported exchange: {exchange_name}")
-                
-            await exchange.load_markets()
-            self.exchanges[exchange_name] = exchange
-            logger.info(f"Exchange {exchange_name} initialized successfully")
-            return True
+                logger.error(f"Failed to initialize exchange {exchange_name}")
+                return False
             
         except Exception as e:
             logger.error(f"Failed to initialize exchange {exchange_name}: {e}")
@@ -65,11 +71,11 @@ class RealtimeTradingEngine:
     async def get_recent_candles(self, exchange_name: str, symbol: str, timeframe: str, limit: int = 100):
         """최근 캔들 데이터 가져오기"""
         try:
-            exchange = self.exchanges.get(exchange_name)
-            if not exchange:
+            adapter = self.exchanges.get(exchange_name)
+            if not adapter:
                 raise ValueError(f"Exchange {exchange_name} not initialized")
                 
-            ohlcv = await exchange.fetch_ohlcv(symbol, timeframe, limit=limit)
+            ohlcv = await adapter.get_ohlcv(symbol, timeframe, limit)
             return ohlcv
             
         except Exception as e:
@@ -275,16 +281,16 @@ class RealtimeTradingEngine:
     async def _execute_position_close(self, position: Position, reason: str):
         """포지션 청산 실행"""
         try:
-            exchange = self.exchanges.get(position.exchange_name)
-            if not exchange:
+            adapter = self.exchanges.get(position.exchange_name)
+            if not adapter:
                 logger.error(f"Exchange {position.exchange_name} not available")
                 return
             
             # 청산 주문 실행
             if position.side == 'long':
-                order = await exchange.create_market_sell_order(position.symbol, position.quantity)
+                order = await adapter.place_market_order(position.symbol, 'sell', position.quantity)
             else:  # short
-                order = await exchange.create_market_buy_order(position.symbol, position.quantity)
+                order = await adapter.place_market_order(position.symbol, 'buy', position.quantity)
             
             close_price = order.get('price', position.current_price)
             
@@ -348,13 +354,13 @@ class RealtimeTradingEngine:
                     logger.error(f"Risk limits prevent opening position for {symbol}")
                     return
             
-            exchange = self.exchanges.get(exchange_name)
-            if not exchange:
+            adapter = self.exchanges.get(exchange_name)
+            if not adapter:
                 logger.error(f"Exchange {exchange_name} not available")
                 return
             
             # 시장가 매수 주문
-            order = await exchange.create_market_buy_order(symbol, position_size)
+            order = await adapter.place_market_order(symbol, 'buy', position_size)
             actual_price = order.get('price', price)
             actual_quantity = order.get('amount', position_size)
             
@@ -392,8 +398,8 @@ class RealtimeTradingEngine:
                 logger.warning(f"No long positions found for {symbol} to sell")
                 return
             
-            exchange = self.exchanges.get(exchange_name)
-            if not exchange:
+            adapter = self.exchanges.get(exchange_name)
+            if not adapter:
                 logger.error(f"Exchange {exchange_name} not available")
                 return
             
@@ -405,7 +411,7 @@ class RealtimeTradingEngine:
                 sell_quantity = min(amount, position.quantity)
                 
                 # 시장가 매도 주문
-                order = await exchange.create_market_sell_order(symbol, sell_quantity)
+                order = await adapter.place_market_order(symbol, 'sell', sell_quantity)
                 close_price = order.get('price', price)
                 
                 # 포지션 청산 (부분 청산 처리)

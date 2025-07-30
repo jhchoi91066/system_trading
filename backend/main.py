@@ -18,7 +18,11 @@ from datetime import datetime, timedelta
 from typing import List, Optional, Set
 import json
 import os
+import logging
 from dotenv import load_dotenv
+
+# 로깅 설정
+logger = logging.getLogger(__name__)
 from jose import jwt, jwk
 from jose.jwt import get_unverified_header
 import requests
@@ -27,6 +31,8 @@ from realtime_optimizer import realtime_optimizer, connection_monitor, cleanup_t
 from realtime_trading_engine import trading_engine
 from position_manager import position_manager
 from risk_manager import risk_manager, RiskLimits
+from demo_trading import demo_simulator, is_demo_mode_enabled, switch_trading_mode
+from performance_analyzer import performance_analyzer, convert_trades_to_returns, calculate_rolling_metrics
 
 # Load environment variables
 load_dotenv()
@@ -2028,7 +2034,7 @@ async def get_auto_trading_status(user_id: str = Depends(get_current_user)):
     try:
         active_monitors = []
         
-        for monitor_key, monitor_info in trading_engine.active_monitors.items():
+        for _, monitor_info in trading_engine.active_monitors.items():
             if monitor_info['user_id'] == user_id:
                 active_monitors.append({
                     "exchange": monitor_info['exchange_name'],
@@ -2476,3 +2482,542 @@ async def update_equity_history(
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error updating equity history: {str(e)}")
+
+# ============= 데모 트레이딩 API =============
+
+@app.post("/demo/initialize")
+async def initialize_demo_account(
+    initial_balance: float = Query(default=10000.0, description="초기 데모 자금"),
+    user_id: str = Depends(get_current_user)
+):
+    """데모 계정 초기화"""
+    try:
+        success = demo_simulator.initialize_user_balance(user_id, initial_balance)
+        
+        if success:
+            return {
+                "message": "Demo account initialized successfully",
+                "initial_balance": initial_balance,
+                "currency": "USDT"
+            }
+        else:
+            raise HTTPException(status_code=500, detail="Failed to initialize demo account")
+            
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error initializing demo account: {str(e)}")
+
+@app.get("/demo/balance")
+async def get_demo_balance(user_id: str = Depends(get_current_user)):
+    """데모 계정 잔고 조회"""
+    try:
+        balance = demo_simulator.get_balance(user_id)
+        
+        if not balance:
+            # 잔고가 없으면 자동으로 초기화
+            demo_simulator.initialize_user_balance(user_id)
+            balance = demo_simulator.get_balance(user_id)
+        
+        return {"balance": balance}
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error getting demo balance: {str(e)}")
+
+@app.post("/demo/orders")
+async def place_demo_order(
+    exchange: str = Query(..., description="거래소명"),
+    symbol: str = Query(..., description="거래 심볼"),
+    side: str = Query(..., description="매수/매도 (buy/sell)"),
+    order_type: str = Query(..., description="주문 타입 (market/limit)"),
+    amount: float = Query(..., description="주문 수량"),
+    price: Optional[float] = Query(None, description="주문 가격 (지정가 주문시)"),
+    current_price: Optional[float] = Query(None, description="현재 시장가 (시장가 주문시)"),
+    user_id: str = Depends(get_current_user)
+):
+    """데모 주문 생성"""
+    try:
+        order_result = await demo_simulator.place_order(
+            user_id=user_id,
+            exchange=exchange,
+            symbol=symbol,
+            side=side,
+            order_type=order_type,
+            amount=amount,
+            price=price,
+            current_market_price=current_price
+        )
+        
+        if 'error' in order_result:
+            raise HTTPException(status_code=400, detail=order_result['error'])
+        
+        return {"order": order_result}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error placing demo order: {str(e)}")
+
+@app.get("/demo/orders")
+async def get_demo_orders(
+    symbol: Optional[str] = Query(None, description="거래 심볼 필터"),
+    status: Optional[str] = Query(None, description="주문 상태 필터"),
+    user_id: str = Depends(get_current_user)
+):
+    """데모 주문 조회"""
+    try:
+        orders = demo_simulator.get_orders(user_id, symbol, status)
+        return {"orders": orders}
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error getting demo orders: {str(e)}")
+
+@app.delete("/demo/orders/{order_id}")
+async def cancel_demo_order(
+    order_id: str,
+    user_id: str = Depends(get_current_user)
+):
+    """데모 주문 취소"""
+    try:
+        result = await demo_simulator.cancel_order(user_id, order_id)
+        
+        if 'error' in result:
+            raise HTTPException(status_code=400, detail=result['error'])
+        
+        return result
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error cancelling demo order: {str(e)}")
+
+@app.get("/demo/positions")
+async def get_demo_positions(
+    symbol: Optional[str] = Query(None, description="거래 심볼 필터"),
+    user_id: str = Depends(get_current_user)
+):
+    """데모 포지션 조회"""
+    try:
+        positions = demo_simulator.get_positions(user_id, symbol)
+        return {"positions": positions}
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error getting demo positions: {str(e)}")
+
+@app.get("/demo/trades")
+async def get_demo_trades(
+    symbol: Optional[str] = Query(None, description="거래 심볼 필터"),
+    limit: int = Query(default=100, description="조회 개수 제한"),
+    user_id: str = Depends(get_current_user)
+):
+    """데모 거래 기록 조회"""
+    try:
+        trades = demo_simulator.get_trade_history(user_id, symbol, limit)
+        return {"trades": trades}
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error getting demo trades: {str(e)}")
+
+@app.get("/demo/performance")
+async def get_demo_performance(user_id: str = Depends(get_current_user)):
+    """데모 성과 요약"""
+    try:
+        performance = demo_simulator.get_performance_summary(user_id)
+        return {"performance": performance}
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error getting demo performance: {str(e)}")
+
+@app.post("/demo/mode")
+async def switch_demo_mode(
+    demo_mode: bool = Query(..., description="데모 모드 활성화 여부"),
+    user_id: str = Depends(get_current_user)
+):
+    """데모/실거래 모드 전환"""
+    try:
+        success = switch_trading_mode(user_id, demo_mode)
+        
+        if success:
+            return {
+                "message": f"Switched to {'demo' if demo_mode else 'live'} trading mode",
+                "demo_mode": demo_mode
+            }
+        else:
+            raise HTTPException(status_code=500, detail="Failed to switch trading mode")
+            
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error switching trading mode: {str(e)}")
+
+@app.get("/demo/mode")
+async def get_demo_mode(user_id: str = Depends(get_current_user)):
+    """현재 트레이딩 모드 조회"""
+    try:
+        demo_mode = is_demo_mode_enabled(user_id)
+        return {
+            "demo_mode": demo_mode,
+            "mode": "demo" if demo_mode else "live"
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error getting trading mode: {str(e)}")
+
+@app.post("/demo/market-update")
+async def update_demo_market_prices(
+    prices: dict = Query(..., description="심볼별 가격 정보"),
+    user_id: str = Depends(get_current_user)
+):
+    """데모 시장 가격 업데이트 (포지션 PnL 계산용)"""
+    try:
+        demo_simulator.update_market_prices(prices)
+        logger.info(f"Market prices updated by user {user_id} for symbols: {list(prices.keys())}")
+        
+        return {
+            "message": "Market prices updated successfully",
+            "updated_symbols": list(prices.keys()),
+            "user_id": user_id
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error updating market prices: {str(e)}")
+
+# ============= BingX 거래소 지원 API =============
+
+@app.post("/exchanges/{exchange_name}/initialize")
+async def initialize_exchange_connection(
+    exchange_name: str,
+    api_key: str = Query(..., description="API 키"),
+    secret_key: str = Query(..., description="Secret 키"),
+    demo_mode: bool = Query(default=True, description="데모 모드 여부"),
+    user_id: str = Depends(get_current_user)
+):
+    """거래소 연결 초기화 (바이낸스, BingX 지원)"""
+    try:
+        success = await trading_engine.initialize_exchange(
+            exchange_name=exchange_name,
+            api_key=api_key,
+            secret=secret_key,
+            demo_mode=demo_mode
+        )
+        
+        if success:
+            logger.info(f"User {user_id} initialized {exchange_name} exchange (demo: {demo_mode})")
+            return {
+                "message": f"{exchange_name} exchange initialized successfully",
+                "exchange": exchange_name,
+                "demo_mode": demo_mode,
+                "status": "connected",
+                "user_id": user_id
+            }
+        else:
+            raise HTTPException(status_code=500, detail=f"Failed to initialize {exchange_name}")
+            
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error initializing exchange: {str(e)}")
+
+@app.get("/exchanges/supported")
+async def get_supported_exchanges():
+    """지원되는 거래소 목록"""
+    try:
+        from exchange_adapter import ExchangeFactory
+        exchanges = ExchangeFactory.get_supported_exchanges()
+        
+        return {
+            "supported_exchanges": exchanges,
+            "features": {
+                "binance": ["spot", "futures", "demo_mode"],
+                "bingx": ["spot", "futures", "demo_mode", "copy_trading"]
+            }
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error getting supported exchanges: {str(e)}")
+
+# ============= 고급 성과 분석 API =============
+
+@app.post("/analysis/performance")
+async def analyze_performance(
+    analysis_type: str = Query(..., description="분석 타입 (backtest/demo/live)"),
+    strategy_id: Optional[int] = Query(None, description="전략 ID"),
+    start_date: Optional[str] = Query(None, description="시작 날짜 (YYYY-MM-DD)"),
+    end_date: Optional[str] = Query(None, description="종료 날짜 (YYYY-MM-DD)"),
+    user_id: str = Depends(get_current_user)
+):
+    """종합 성과 분석"""
+    try:
+        # 데이터 수집
+        if analysis_type == "demo":
+            trades = demo_simulator.get_trade_history(user_id, limit=1000)
+            returns, equity_curve = convert_trades_to_returns(trades)
+        elif analysis_type == "backtest":
+            # 백테스트 결과에서 데이터 가져오기 (실제 구현 필요)
+            returns = []
+            equity_curve = []
+            trades = []
+        else:
+            # 실거래 데이터 (실제 구현 필요)
+            returns = []
+            equity_curve = []
+            trades = []
+        
+        # 성과 분석 실행
+        metrics = performance_analyzer.analyze_performance(
+            returns=returns,
+            equity_curve=equity_curve,
+            trades=trades
+        )
+        
+        # 결과 반환
+        return {
+            "analysis_type": analysis_type,
+            "metrics": {
+                "total_return": metrics.total_return,
+                "annualized_return": metrics.annualized_return,
+                "volatility": metrics.volatility,
+                "sharpe_ratio": metrics.sharpe_ratio,
+                "sortino_ratio": metrics.sortino_ratio,
+                "max_drawdown": metrics.max_drawdown,
+                "max_drawdown_duration": metrics.max_drawdown_duration,
+                "calmar_ratio": metrics.calmar_ratio,
+                "win_rate": metrics.win_rate,
+                "profit_factor": metrics.profit_factor,
+                "total_trades": metrics.total_trades,
+                "var_95": metrics.var_95,
+                "cvar_95": metrics.cvar_95
+            },
+            "report": performance_analyzer.generate_performance_report(metrics, analysis_type)
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error analyzing performance: {str(e)}")
+
+@app.post("/analysis/compare")
+async def compare_strategies(
+    strategy_a_type: str = Query(..., description="전략 A 타입 (backtest/demo/live)"),
+    strategy_b_type: str = Query(..., description="전략 B 타입 (backtest/demo/live)"),
+    strategy_a_id: Optional[int] = Query(None, description="전략 A ID"),
+    strategy_b_id: Optional[int] = Query(None, description="전략 B ID"),
+    user_id: str = Depends(get_current_user)
+):
+    """전략 비교 분석"""
+    try:
+        # 전략 A 데이터 수집
+        if strategy_a_type == "demo":
+            trades_a = demo_simulator.get_trade_history(user_id, limit=1000)
+            returns_a, equity_a = convert_trades_to_returns(trades_a)
+        else:
+            returns_a, equity_a, trades_a = [], [], []
+        
+        # 전략 B 데이터 수집
+        if strategy_b_type == "demo":
+            trades_b = demo_simulator.get_trade_history(user_id, limit=1000)
+            returns_b, equity_b = convert_trades_to_returns(trades_b)
+        else:
+            returns_b, equity_b, trades_b = [], [], []
+        
+        # 비교 분석 실행
+        comparison = performance_analyzer.compare_strategies(
+            results_a={
+                'returns': returns_a,
+                'equity_curve': equity_a,
+                'trades': trades_a
+            },
+            results_b={
+                'returns': returns_b,
+                'equity_curve': equity_b,
+                'trades': trades_b
+            },
+            analysis_type_a=f"{strategy_a_type} Strategy A",
+            analysis_type_b=f"{strategy_b_type} Strategy B"
+        )
+        
+        return {
+            "comparison": {
+                "strategy_a": strategy_a_type,
+                "strategy_b": strategy_b_type,
+                "correlation": comparison.correlation,
+                "outperformance": comparison.outperformance,
+                "statistical_significance": comparison.statistical_significance,
+                "summary": comparison.summary
+            },
+            "metrics_a": {
+                "total_return": comparison.metrics_a.total_return,
+                "sharpe_ratio": comparison.metrics_a.sharpe_ratio,
+                "max_drawdown": comparison.metrics_a.max_drawdown,
+                "win_rate": comparison.metrics_a.win_rate
+            },
+            "metrics_b": {
+                "total_return": comparison.metrics_b.total_return,
+                "sharpe_ratio": comparison.metrics_b.sharpe_ratio,
+                "max_drawdown": comparison.metrics_b.max_drawdown,
+                "win_rate": comparison.metrics_b.win_rate
+            }
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error comparing strategies: {str(e)}")
+
+@app.get("/analysis/rolling/{analysis_type}")
+async def get_rolling_metrics(
+    analysis_type: str,
+    window: int = Query(default=30, description="롤링 윈도우 크기 (일)"),
+    strategy_id: Optional[int] = Query(None, description="전략 ID"),
+    user_id: str = Depends(get_current_user)
+):
+    """롤링 성과 지표 조회"""
+    try:
+        # 데이터 수집
+        if analysis_type == "demo":
+            trades = demo_simulator.get_trade_history(user_id, limit=1000)
+            returns, equity_curve = convert_trades_to_returns(trades)
+        else:
+            returns, equity_curve = [], []
+        
+        if not returns:
+            return {"message": "No data available for rolling metrics"}
+        
+        # 롤링 지표 계산
+        rolling_metrics = calculate_rolling_metrics(returns, window)
+        
+        return {
+            "analysis_type": analysis_type,
+            "window": window,
+            "metrics": rolling_metrics,
+            "data_points": len(rolling_metrics.get('rolling_return', []))
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error calculating rolling metrics: {str(e)}")
+
+@app.get("/analysis/risk-metrics/{analysis_type}")
+async def get_risk_metrics(
+    analysis_type: str,
+    confidence_level: float = Query(default=0.95, description="신뢰수준"),
+    strategy_id: Optional[int] = Query(None, description="전략 ID"),
+    user_id: str = Depends(get_current_user)
+):
+    """리스크 지표 분석"""
+    try:
+        # 데이터 수집
+        if analysis_type == "demo":
+            trades = demo_simulator.get_trade_history(user_id, limit=1000)
+            returns, equity_curve = convert_trades_to_returns(trades)
+        else:
+            returns, equity_curve = [], []
+        
+        if not returns:
+            return {"message": "No data available for risk analysis"}
+        
+        # 리스크 지표 계산
+        risk_metrics = performance_analyzer.calculate_risk_metrics(returns, confidence_level)
+        drawdown_metrics = performance_analyzer.calculate_drawdown_metrics(equity_curve) if equity_curve else {}
+        
+        return {
+            "analysis_type": analysis_type,
+            "confidence_level": confidence_level,
+            "risk_metrics": {
+                **risk_metrics,
+                **drawdown_metrics
+            }
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error calculating risk metrics: {str(e)}")
+
+@app.get("/analysis/trade-analysis/{analysis_type}")
+async def get_trade_analysis(
+    analysis_type: str,
+    strategy_id: Optional[int] = Query(None, description="전략 ID"),
+    user_id: str = Depends(get_current_user)
+):
+    """거래 분석"""
+    try:
+        # 데이터 수집
+        if analysis_type == "demo":
+            trades = demo_simulator.get_trade_history(user_id, limit=1000)
+        else:
+            trades = []
+        
+        if not trades:
+            return {"message": "No trades available for analysis"}
+        
+        # 거래 지표 계산
+        trade_metrics = performance_analyzer.calculate_trade_metrics(trades)
+        
+        # 거래 패턴 분석
+        trade_analysis = {
+            "daily_trades": len([t for t in trades if datetime.fromisoformat(t['timestamp']).date() == datetime.now().date()]),
+            "avg_trades_per_day": len(trades) / max(1, (datetime.now() - datetime.fromisoformat(trades[0]['timestamp'])).days),
+            "best_performing_symbol": None,
+            "worst_performing_symbol": None
+        }
+        
+        # 심볼별 성과 분석
+        symbol_performance = {}
+        for trade in trades:
+            symbol = trade.get('symbol', 'Unknown')
+            pnl = trade.get('pnl', 0)
+            
+            if symbol not in symbol_performance:
+                symbol_performance[symbol] = {'pnl': 0, 'trades': 0}
+            
+            symbol_performance[symbol]['pnl'] += pnl
+            symbol_performance[symbol]['trades'] += 1
+        
+        if symbol_performance:
+            best_symbol = max(symbol_performance, key=lambda x: symbol_performance[x]['pnl'])
+            worst_symbol = min(symbol_performance, key=lambda x: symbol_performance[x]['pnl'])
+            
+            trade_analysis['best_performing_symbol'] = {
+                'symbol': best_symbol,
+                'pnl': symbol_performance[best_symbol]['pnl'],
+                'trades': symbol_performance[best_symbol]['trades']
+            }
+            trade_analysis['worst_performing_symbol'] = {
+                'symbol': worst_symbol,
+                'pnl': symbol_performance[worst_symbol]['pnl'],
+                'trades': symbol_performance[worst_symbol]['trades']
+            }
+        
+        return {
+            "analysis_type": analysis_type,
+            "trade_metrics": trade_metrics,
+            "trade_analysis": trade_analysis,
+            "symbol_performance": symbol_performance
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error analyzing trades: {str(e)}")
+
+@app.get("/analysis/dashboard/{analysis_type}")
+async def get_analysis_dashboard(
+    analysis_type: str,
+    strategy_id: Optional[int] = Query(None, description="전략 ID"),
+    user_id: str = Depends(get_current_user)
+):
+    """종합 분석 대시보드 데이터"""
+    try:
+        # 기본 성과 분석
+        performance_response = await analyze_performance(analysis_type, strategy_id, None, None, user_id)
+        
+        # 롤링 지표
+        rolling_response = await get_rolling_metrics(analysis_type, 30, strategy_id, user_id)
+        
+        # 리스크 지표
+        risk_response = await get_risk_metrics(analysis_type, 0.95, strategy_id, user_id)
+        
+        # 거래 분석
+        trade_response = await get_trade_analysis(analysis_type, strategy_id, user_id)
+        
+        return {
+            "analysis_type": analysis_type,
+            "dashboard": {
+                "performance": performance_response.get("metrics", {}),
+                "rolling_metrics": rolling_response.get("metrics", {}),
+                "risk_metrics": risk_response.get("risk_metrics", {}),
+                "trade_analysis": trade_response.get("trade_metrics", {}),
+                "symbol_performance": trade_response.get("symbol_performance", {})
+            },
+            "report": performance_response.get("report", ""),
+            "last_updated": datetime.now().isoformat()
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error generating analysis dashboard: {str(e)}")

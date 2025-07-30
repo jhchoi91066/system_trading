@@ -1,0 +1,27 @@
+{
+  "api_key": "",
+  "secret_key": "",
+  "demo_mode": true,
+  "base_url": "https://api-demo.bingx.com",
+  "websocket_url": "wss://open-api-ws.bingx.com/market",
+  "initial_demo_balance": 10000,
+  "currency": "USDT",
+  "features": {
+    "spot_trading": true,
+    "futures_trading": true,
+    "copy_trading": true,
+    "demo_trading": true
+  },
+  "risk_settings": {
+    "max_position_size_pct": 5.0,
+    "max_daily_loss_pct": 2.0,
+    "stop_loss_pct": 3.0,
+    "take_profit_pct": 6.0
+  },
+  "trading_settings": {
+    "maker_fee": 0.001,
+    "taker_fee": 0.001,
+    "slippage_rate": 0.0005,
+    "execution_delay": 0.1
+  }
+}
