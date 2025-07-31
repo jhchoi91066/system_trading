@@ -8,6 +8,7 @@ interface TradingChartProps {
   exchange?: string;
   height?: number;
   interval?: string;
+  onIntervalChange?: (interval: string) => void;
 }
 
 interface OHLCVData {
@@ -23,7 +24,8 @@ export default function TradingChart({
   symbol = 'BTC/USDT', 
   exchange = 'binance',
   height = 500,
-  interval = '1h'
+  interval = '1h',
+  onIntervalChange
 }: TradingChartProps) {
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
@@ -436,9 +438,9 @@ export default function TradingChart({
                 <button
                   key={tf}
                   onClick={() => {
-                    // This would trigger a re-render with new interval
-                    // For now, just refresh with current interval
-                    refreshChart();
+                    if (onIntervalChange && tf !== interval) {
+                      onIntervalChange(tf);
+                    }
                   }}
                   className={`px-2 py-1 text-xs rounded transition-colors ${
                     tf === interval

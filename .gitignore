@@ -10,6 +10,8 @@ __pycache__/
 # Test files
 test_chart.html
 test_websocket.py
+backend/bingx_client_original.py
+backend/simple_server.py
 
 # Data directories
 backend/data/

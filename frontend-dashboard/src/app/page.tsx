@@ -44,6 +44,7 @@ export default function Home() {
     initial_capital: 10000,
     commission: 0.001,
   });
+  const [chartTimeframe, setChartTimeframe] = useState('1h');
   const [loadingBacktest, setLoadingBacktest] = useState(false);
 
   useEffect(() => {
@@ -177,7 +178,8 @@ export default function Home() {
               symbol={backtestParams.symbol}
               exchange={backtestParams.exchange_id}
               height={600}
-              interval="1h"
+              interval={chartTimeframe}
+              onIntervalChange={setChartTimeframe}
             />
           </NoSSR>
         </div>
@@ -286,6 +288,98 @@ export default function Home() {
             </div>
           </div>
         )}
+
+        {/* Demo Trading Controls */}
+        <div className="linear-card mt-8">
+          <NoSSR fallback={<h2 className="text-h3 mb-6">Demo Trading</h2>}>
+            <LocalizedSectionTitle sectionKey="trading.demoTrading" />
+          </NoSSR>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+            <button
+              onClick={() => {
+                // Activate trading strategy
+                fetch('http://127.0.0.1:8000/trading/activate', { method: 'POST' })
+                  .then(res => res.json())
+                  .then(data => {
+                    if (data.success) {
+                      alert('Trading strategy activated successfully!');
+                    } else {
+                      alert('Failed to activate strategy: ' + data.error);
+                    }
+                  })
+                  .catch(err => alert('Error: ' + err.message));
+              }}
+              className="linear-button-primary py-3 px-6"
+            >
+              🚀 Start Demo Trading
+            </button>
+            
+            <button
+              onClick={() => {
+                // Place a manual test order
+                fetch('http://127.0.0.1:8000/trading/order', { method: 'POST' })
+                  .then(res => res.json())
+                  .then(data => {
+                    if (data.success) {
+                      alert('Test order placed successfully!');
+                    } else {
+                      alert('Failed to place order: ' + data.error);
+                    }
+                  })
+                  .catch(err => alert('Error: ' + err.message));
+              }}
+              className="linear-button-secondary py-3 px-6"
+            >
+              📈 Place Test Order
+            </button>
+            
+            <button
+              onClick={() => {
+                // Check VST status
+                fetch('http://127.0.0.1:8000/vst/status')
+                  .then(res => res.json())
+                  .then(data => {
+                    if (data.status === 'connected') {
+                      alert(`VST Connected!\nBalance: $${data.vst_balance}\nPositions: ${data.open_positions}/${data.total_positions}`);
+                    } else {
+                      alert('VST Status: ' + data.status + '\nError: ' + (data.error || 'Unknown'));
+                    }
+                  })
+                  .catch(err => alert('Error: ' + err.message));
+              }}
+              className="linear-button-ghost py-3 px-6"
+            >
+              ⚙️ Check VST Status
+            </button>
+            
+            <button
+              onClick={() => {
+                // View trading history
+                fetch('http://127.0.0.1:8000/trading/history')
+                  .then(res => res.json())
+                  .then(data => {
+                    const historyText = data.slice(0, 3).map((trade: any) => 
+                      `${trade.side} ${trade.amount} ${trade.symbol} @ $${trade.price}`
+                    ).join('\n');
+                    alert('Recent Trades:\n' + (historyText || 'No recent trades'));
+                  })
+                  .catch(err => alert('Error: ' + err.message));
+              }}
+              className="linear-button-ghost py-3 px-6"
+            >
+              📊 View History
+            </button>
+          </div>
+          
+          <div className="bg-blue-900 bg-opacity-20 border border-blue-500 rounded-lg p-4 text-sm">
+            <p className="text-blue-300 mb-2">
+              <strong>🧪 Demo Trading Mode</strong>
+            </p>
+            <p className="text-blue-200">
+              Using BingX VST (Virtual Simulated Trading) with virtual funds. All trades are simulated but use real market data and BingX's demo trading platform.
+            </p>
+          </div>
+        </div>
 
         {/* Backtest Strategy */}
         <div className="linear-card mt-8">

@@ -36,8 +36,9 @@ class BingXVSTClient:
         self.api_key = api_key
         self.secret_key = secret_key
         
-        # BingX VST API URLs
-        self.base_url = "https://open-api-vst.bingx.com"  # VST 전용 도메인
+        # BingX API URLs
+        self.base_url = "https://open-api-vst.bingx.com"  # VST 전용 도메인 (인증 필요 API)
+        self.public_base_url = "https://open-api.bingx.com"  # 공개 API 도메인 (인증 불필요)
         self.websocket_url = "wss://open-api-ws.bingx.com/market"
         
         # API 요청 제한
@@ -73,7 +74,7 @@ class BingXVSTClient:
         """현재 타임스탬프 반환 (밀리초)"""
         return str(int(time.time() * 1000))
     
-    def _make_request(self, method: str, endpoint: str, params: Dict = None, signed: bool = True) -> Dict:
+    def _make_request(self, method: str, endpoint: str, params: Dict = None, signed: bool = True, use_public_api: bool = False) -> Dict:
         """
         API 요청 실행
         
@@ -89,19 +90,26 @@ class BingXVSTClient:
         if params is None:
             params = {}
         
-        url = f"{self.base_url}{endpoint}"
+        # 공개 API 사용 여부에 따라 URL 선택
+        base_url = self.public_base_url if use_public_api else self.base_url
+        url = f"{base_url}{endpoint}"
         
         # 서명이 필요한 경우
         if signed:
             timestamp = self._get_timestamp()
             params['timestamp'] = timestamp
             
-            # 쿼리 문자열 생성 (알파벳 순 정렬)
-            query_string = urlencode(sorted(params.items()))
-            
-            # 서명 생성 (전체 쿼리 문자열 사용)
-            signature = self._generate_signature(query_string)
-            params['signature'] = signature
+            # POST 요청은 파라미터를 쿼리 문자열로 변환하여 서명
+            if method.upper() == 'POST':
+                # POST용 서명: 모든 파라미터를 포함한 쿼리 문자열
+                query_string = urlencode(sorted(params.items()))
+                signature = self._generate_signature(query_string)
+                params['signature'] = signature
+            else:
+                # GET/DELETE용 서명: 기존 방식
+                query_string = urlencode(sorted(params.items())) 
+                signature = self._generate_signature(query_string)
+                params['signature'] = signature
             
             # 헤더에 API 키 추가
             headers = {
@@ -114,7 +122,8 @@ class BingXVSTClient:
             if method.upper() == 'GET':
                 response = self.session.get(url, params=params, headers=headers)
             elif method.upper() == 'POST':
-                response = self.session.post(url, json=params, headers=headers)
+                # POST 요청은 쿼리 파라미터로 전송 (BingX API 특성)
+                response = self.session.post(url, params=params, headers=headers)
             elif method.upper() == 'DELETE':
                 response = self.session.delete(url, params=params, headers=headers)
             else:
@@ -175,12 +184,78 @@ class BingXVSTClient:
                 params['symbol'] = symbol
             
             result = self._make_request("GET", "/openApi/swap/v2/trade/allOrders", params)
-            trades = result.get('data', [])
+            trades = result.get('orders', result.get('data', []))  # Try 'orders' first, then fall back to 'data'
             logger.info(f"VST Trade history retrieved: {len(trades)} trades")
             return trades
         except Exception as e:
             logger.error(f"Failed to get VST trade history: {e}")
             return []
+    
+    # ============= 마켓 데이터 API (공개 API) =============
+    
+    def get_kline_data(self, symbol: str, interval: str = "1h", limit: int = 100) -> List[Dict]:
+        """
+        BingX 공개 API에서 OHLCV 데이터 조회
+        
+        Args:
+            symbol: 거래 심볼 (예: BTC-USDT)
+            interval: 시간 간격 (1m, 5m, 15m, 1h, 4h, 1d)
+            limit: 데이터 개수 (최대 1000)
+            
+        Returns:
+            OHLCV 데이터 리스트
+        """
+        try:
+            # 공개 API는 서명이 필요 없음
+            params = {
+                'symbol': symbol,
+                'interval': interval,
+                'limit': limit
+            }
+            
+            # BingX 공개 API 엔드포인트 사용
+            result = self._make_request("GET", "/openApi/swap/v3/quote/klines", params, signed=False, use_public_api=True)
+            
+            if result.get('code') == 0:
+                klines = result.get('data', [])
+                logger.info(f"Retrieved {len(klines)} kline data points for {symbol}")
+                return klines
+            else:
+                logger.error(f"Failed to get kline data: {result}")
+                return []
+                
+        except Exception as e:
+            logger.error(f"Failed to get kline data: {e}")
+            return []
+    
+    def get_ticker_24hr(self, symbol: str = None) -> Dict:
+        """
+        BingX 24시간 티커 데이터 조회
+        
+        Args:
+            symbol: 거래 심볼 (선택사항, 없으면 전체 조회)
+            
+        Returns:
+            티커 데이터
+        """
+        try:
+            params = {}
+            if symbol:
+                params['symbol'] = symbol
+            
+            result = self._make_request("GET", "/openApi/swap/v2/quote/ticker", params, signed=False, use_public_api=True)
+            
+            if result.get('code') == 0:
+                ticker_data = result.get('data', {})
+                logger.info(f"Retrieved ticker data for {symbol or 'all symbols'}")
+                return ticker_data
+            else:
+                logger.error(f"Failed to get ticker data: {result}")
+                return {}
+                
+        except Exception as e:
+            logger.error(f"Failed to get ticker data: {e}")
+            return {}
     
     # ============= VST 거래 실행 API =============
     
@@ -204,31 +279,33 @@ class BingXVSTClient:
             주문 결과
         """
         try:
-            # 고유한 클라이언트 주문 ID 생성 (GitHub 이슈에서 권장)
-            client_order_id = str(uuid.uuid4())
-            
+            # 필수 파라미터 (BingX API 문서 기준)
             params = {
-                'symbol': symbol,
-                'side': side.upper(),
-                'type': order_type.upper(),
-                'quantity': str(quantity),
-                'positionSide': position_side.upper(),
-                'timeInForce': time_in_force,
-                'clientOrderID': client_order_id  # 필수 파라미터
+                'symbol': symbol,                    # BTC-USDT 형식
+                'side': side.upper(),               # BUY/SELL
+                'positionSide': position_side.upper(),  # LONG/SHORT (perpetual futures 필수)
+                'type': order_type.upper(),         # MARKET/LIMIT
+                'quantity': quantity                # 숫자형으로 전송
             }
             
+            # 선택적 파라미터
             if price is not None:
-                params['price'] = str(price)
+                params['price'] = price
                 
             if stop_price is not None:
-                params['stopPrice'] = str(stop_price)
+                params['stopPrice'] = stop_price
+                
+            # timeInForce는 LIMIT 주문에만 적용
+            if order_type.upper() == 'LIMIT':
+                params['timeInForce'] = time_in_force
             
             result = self._make_request("POST", "/openApi/swap/v2/trade/order", params)
             
             # 성공 로깅
             if result.get('code') == 0:
-                logger.info(f"VST Order placed successfully: {client_order_id}")
-                logger.info(f"Order details: {symbol} {side} {quantity} @ {price}")
+                order_id = result.get('data', {}).get('orderId', 'N/A')
+                logger.info(f"VST Order placed successfully: {order_id}")
+                logger.info(f"Order details: {symbol} {side} {quantity}")
             else:
                 logger.error(f"VST Order failed: {result}")
             
