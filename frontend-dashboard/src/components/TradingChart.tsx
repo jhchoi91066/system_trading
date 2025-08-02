@@ -54,6 +54,8 @@ export default function TradingChart({
   useEffect(() => {
     if (!chartContainerRef.current) return;
 
+    console.log(`TradingChart useEffect: symbol=${symbol}, exchange=${exchange}, interval=${interval}, height=${height}`);
+
     // Create chart
     console.log('Creating chart with container:', chartContainerRef.current);
     const chart = createChart(chartContainerRef.current, {

@@ -51,37 +51,90 @@ def backtest_strategy(ohlcv_data, window=20, buy_threshold=100, sell_threshold=-
 
     capital = initial_capital
     position = 0 # 0: no position, 1: long, -1: short
+    buy_price = 0 # Track the price of the last buy order
+    buy_amount = 0 # Track the amount of the last buy order
     trades = []
-
+    
     for i in range(len(df)):
         current_price = df['close'].iloc[i]
         signal = df['signal'].iloc[i]
 
         if signal == 1 and position == 0: # Buy signal and no open position
             # Buy at current price
-            buy_amount = capital / current_price
-            capital -= buy_amount * current_price * commission
+            buy_amount = capital / current_price # Invest all available capital
+            fee = buy_amount * current_price * commission
+            capital -= fee
             position = 1
-            trades.append({'type': 'buy', 'price': current_price, 'amount': buy_amount, 'capital': capital, 'timestamp': int(df['timestamp'].iloc[i])})
+            buy_price = current_price
+            trades.append({
+                'type': 'buy',
+                'price': current_price,
+                'amount': buy_amount,
+                'capital': capital,
+                'timestamp': int(df['timestamp'].iloc[i]),
+                'fee': fee,
+                'profit_loss': 0.0, # No PnL on buy
+                'profit_percent': 0.0 # No PnL on buy
+            })
 
         elif signal == -1 and position == 1: # Sell signal and long position
             # Sell at current price
-            capital += buy_amount * current_price * (1 - commission)
+            fee = buy_amount * current_price * commission
+            capital += buy_amount * current_price - fee
+            
+            profit_loss = (buy_amount * current_price) - (buy_amount * buy_price) - fee # Simple PnL
+            profit_percent = (profit_loss / (buy_amount * buy_price)) * 100 if (buy_amount * buy_price) != 0 else 0
+            
             position = 0
-            trades.append({'type': 'sell', 'price': current_price, 'amount': buy_amount, 'capital': capital, 'timestamp': int(df['timestamp'].iloc[i])})
+            trades.append({
+                'type': 'sell',
+                'price': current_price,
+                'amount': buy_amount,
+                'capital': capital,
+                'timestamp': int(df['timestamp'].iloc[i]),
+                'fee': fee,
+                'profit_loss': profit_loss,
+                'profit_percent': profit_percent
+            })
 
     # If there's an open position at the end, close it
     if position == 1:
-        capital += buy_amount * current_price * (1 - commission)
+        final_price = df['close'].iloc[-1] # Use the last available close price
+        fee = buy_amount * final_price * commission
+        capital += buy_amount * final_price - fee
+        
+        profit_loss = (buy_amount * final_price) - (buy_amount * buy_price) - fee
+        profit_percent = (profit_loss / (buy_amount * buy_price)) * 100 if (buy_amount * buy_price) != 0 else 0
+        
         position = 0
-        trades.append({'type': 'close', 'price': current_price, 'amount': buy_amount, 'capital': capital, 'timestamp': int(df['timestamp'].iloc[i])})
+        trades.append({
+            'type': 'close',
+            'price': final_price,
+            'amount': buy_amount,
+            'capital': capital,
+            'timestamp': int(df['timestamp'].iloc[-1]),
+            'fee': fee,
+            'profit_loss': profit_loss,
+            'profit_percent': profit_percent
+        })
 
     final_capital = float(capital)
-    profit_loss = float(final_capital - initial_capital)
+    profit_loss_total = float(final_capital - initial_capital)
+    
+    # Calculate trade statistics
+    winning_trades = [t for t in trades if t['type'] != 'buy' and t['profit_loss'] > 0]
+    losing_trades = [t for t in trades if t['type'] != 'buy' and t['profit_loss'] < 0]
+    total_closed_trades = len(winning_trades) + len(losing_trades)
+    win_rate = (len(winning_trades) / total_closed_trades) * 100 if total_closed_trades > 0 else 0
+
     return {
         "initial_capital": float(initial_capital),
         "final_capital": final_capital,
-        "profit_loss": profit_loss,
+        "profit_loss": profit_loss_total,
+        "total_trades": total_closed_trades,
+        "winning_trades": len(winning_trades),
+        "losing_trades": len(losing_trades),
+        "win_rate": win_rate,
         "trades": trades
     }
 

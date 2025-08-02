@@ -19,7 +19,7 @@ from urllib.parse import urlencode
 from datetime import datetime
 
 # 로깅 설정
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
 class BingXVSTClient:
@@ -27,19 +27,31 @@ class BingXVSTClient:
     
     def __init__(self, api_key: str, secret_key: str):
         """
-        BingX VST API 클라이언트 초기화
+        BingX VST API 클라이언트 초기화 - 데모 모드 전용
+        🚨 실제 USDT 거래 완전 차단 🚨
         
         Args:
             api_key: BingX API 키
             secret_key: BingX Secret 키
         """
+        # 🛡️ 안전 설정: VST 데모 모드 강제
+        self.DEMO_MODE_ONLY = True
+        self.REAL_TRADING_BLOCKED = True
+        self.ALLOWED_ASSET = "VST"
+        
         self.api_key = api_key
         self.secret_key = secret_key
         
-        # BingX API URLs
-        self.base_url = "https://open-api-vst.bingx.com"  # VST 전용 도메인 (인증 필요 API)
+        # BingX API URLs - VST (Virtual Simulated Trading) 전용
+        self.base_url = "https://open-api-vst.bingx.com"  # VST 데모 트레이딩 전용 도메인
         self.public_base_url = "https://open-api.bingx.com"  # 공개 API 도메인 (인증 불필요)
         self.websocket_url = "wss://open-api-ws.bingx.com/market"
+        
+        # 🚨 실제 거래 차단: 실제 거래 API URL을 의도적으로 차단
+        self.blocked_real_urls = [
+            "https://open-api.bingx.com/openApi/swap/v2/trade/order",  # 실제 주문 API
+            "https://open-api.bingx.com"  # 실제 거래 도메인
+        ]
         
         # API 요청 제한
         self.rate_limit_delay = 0.1  # 100ms 지연
@@ -51,23 +63,43 @@ class BingXVSTClient:
             'User-Agent': 'BingX-VST-Python-Client'
         })
         
-        logger.info("BingX VST Client initialized")
+        logger.info("🎮 BingX VST (Virtual Simulated Trading) Client initialized - Demo Mode")
+    
+    def _validate_vst_demo_only(self):
+        """🛡️ VST 데모 모드 전용 검증 - 실제 거래 차단"""
+        if not self.DEMO_MODE_ONLY:
+            raise Exception("🚨 SECURITY VIOLATION: Only VST demo mode allowed!")
+        
+        if not self.REAL_TRADING_BLOCKED:
+            raise Exception("🚨 SECURITY VIOLATION: Real trading must be blocked!")
+        
+        logger.debug("🛡️ VST Demo mode validation passed - Real trading blocked")
+        return True
+    
+    def _check_blocked_urls(self, url: str):
+        """🚨 실제 거래 URL 차단 검사"""
+        for blocked_url in self.blocked_real_urls:
+            if blocked_url in url and "vst" not in url.lower():
+                raise Exception(f"🚨 BLOCKED: Real trading URL detected! {url}")
+        return True
     
     def _generate_signature(self, query_string: str) -> str:
         """
-        HMAC SHA256 서명 생성 (BingX 방식)
+        HMAC SHA256 서명 생성 (BingX 공식 방식)
         
         Args:
             query_string: 완전한 쿼리 문자열 (timestamp 포함)
             
         Returns:
-            서명 문자열
+            서명 문자열 (hex 형식)
         """
+        # BingX API 표준 HMAC SHA256 서명
         signature = hmac.new(
             self.secret_key.encode('utf-8'),
             query_string.encode('utf-8'),
             hashlib.sha256
         ).hexdigest()
+        
         return signature
     
     def _get_timestamp(self) -> str:
@@ -76,7 +108,7 @@ class BingXVSTClient:
     
     def _make_request(self, method: str, endpoint: str, params: Dict = None, signed: bool = True, use_public_api: bool = False) -> Dict:
         """
-        API 요청 실행
+        API 요청 실행 (BingX 공식 문서 기준 구현) - VST 데모 모드 전용
         
         Args:
             method: HTTP 메서드 (GET, POST, DELETE)
@@ -87,6 +119,9 @@ class BingXVSTClient:
         Returns:
             API 응답 데이터
         """
+        # 🛡️ 요청 전 안전 검증
+        self._validate_vst_demo_only()
+        
         if params is None:
             params = {}
         
@@ -94,24 +129,34 @@ class BingXVSTClient:
         base_url = self.public_base_url if use_public_api else self.base_url
         url = f"{base_url}{endpoint}"
         
+        # 🚨 실제 거래 URL 차단 검사
+        if signed and not use_public_api:  # 거래 관련 요청인 경우
+            self._check_blocked_urls(url)
+        
         # 서명이 필요한 경우
         if signed:
             timestamp = self._get_timestamp()
             params['timestamp'] = timestamp
             
-            # POST 요청은 파라미터를 쿼리 문자열로 변환하여 서명
-            if method.upper() == 'POST':
-                # POST용 서명: 모든 파라미터를 포함한 쿼리 문자열
-                query_string = urlencode(sorted(params.items()))
-                signature = self._generate_signature(query_string)
-                params['signature'] = signature
-            else:
-                # GET/DELETE용 서명: 기존 방식
-                query_string = urlencode(sorted(params.items())) 
-                signature = self._generate_signature(query_string)
-                params['signature'] = signature
+            # BingX API 서명 방식 (공식 문서 기준)
+            # 1. 모든 파라미터를 문자열로 변환
+            string_params = {k: str(v) for k, v in params.items()}
             
-            # 헤더에 API 키 추가
+            # 2. 파라미터를 알파벳 순으로 정렬
+            sorted_params = sorted(string_params.items())
+            
+            # 3. 쿼리 문자열 생성 (param1=value1&param2=value2 형식)
+            query_string = urlencode(sorted_params)
+            
+            # 4. HMAC SHA256 서명 생성
+            signature = self._generate_signature(query_string)
+            
+            # 디버깅 로깅
+            logger.debug(f"Parameters: {params}")
+            logger.debug(f"Query string for signature: {query_string}")
+            logger.debug(f"Generated signature: {signature[:10]}...")
+            
+            # 헤더 설정
             headers = {
                 'X-BX-APIKEY': self.api_key
             }
@@ -120,11 +165,37 @@ class BingXVSTClient:
         
         try:
             if method.upper() == 'GET':
+                # GET 요청: 서명 포함하여 쿼리 파라미터로 전송
+                if signed:
+                    params['signature'] = signature
                 response = self.session.get(url, params=params, headers=headers)
+                
             elif method.upper() == 'POST':
-                # POST 요청은 쿼리 파라미터로 전송 (BingX API 특성)
-                response = self.session.post(url, params=params, headers=headers)
+                # POST 요청: BingX 공식 방식
+                # 서명된 파라미터를 모두 쿼리 문자열로 전송
+                if signed:
+                    # 서명을 파라미터에 추가
+                    params['signature'] = signature
+                    
+                    # 최종 URL 생성 (서명 포함)
+                    final_params = {k: str(v) for k, v in params.items()}
+                    sorted_final_params = sorted(final_params.items())
+                    final_query_string = urlencode(sorted_final_params)
+                    final_url = f"{url}?{final_query_string}"
+                    
+                    logger.debug(f"Final POST URL: {final_url}")
+                    
+                    # Content-Type 설정
+                    headers['Content-Type'] = 'application/x-www-form-urlencoded'
+                    
+                    # POST 요청 실행 (body는 비워둠, 모든 파라미터가 쿼리에 포함됨)
+                    response = self.session.post(final_url, headers=headers)
+                else:
+                    response = self.session.post(url, data=params, headers=headers)
+                    
             elif method.upper() == 'DELETE':
+                if signed:
+                    params['signature'] = signature
                 response = self.session.delete(url, params=params, headers=headers)
             else:
                 raise ValueError(f"Unsupported HTTP method: {method}")
@@ -135,18 +206,18 @@ class BingXVSTClient:
             response.raise_for_status()
             result = response.json()
             
-            # VST API 응답 로깅
-            logger.info(f"VST API {method} {endpoint}: {result.get('code', 'N/A')}")
+            # VST API 응답 로깅 (데모 트레이딩)
+            logger.info(f"🎮 VST API {method} {endpoint}: {result.get('code', 'N/A')} (Demo Mode)")
             
             return result
             
         except requests.exceptions.RequestException as e:
-            logger.error(f"BingX VST API request failed: {e}")
+            logger.error(f"BingX API request failed: {e}")
             if hasattr(e, 'response') and e.response is not None:
                 logger.error(f"Response content: {e.response.text}")
             raise e
         except Exception as e:
-            logger.error(f"Unexpected error in BingX VST API request: {e}")
+            logger.error(f"Unexpected error in BingX API request: {e}")
             raise e
     
     # ============= VST 계정 관리 API =============
@@ -155,10 +226,10 @@ class BingXVSTClient:
         """VST 계정 잔고 조회"""
         try:
             result = self._make_request("GET", "/openApi/swap/v2/user/balance")
-            logger.info(f"VST Balance retrieved: {result}")
+            logger.info(f"💰 VST Demo Balance retrieved: {result} (Virtual Funds)")
             return result
         except Exception as e:
-            logger.error(f"Failed to get VST balance: {e}")
+            logger.error(f"❌ Failed to get VST demo balance: {e}")
             return {}
     
     def get_vst_positions(self, symbol: str = None) -> List[Dict]:
@@ -170,10 +241,10 @@ class BingXVSTClient:
             
             result = self._make_request("GET", "/openApi/swap/v2/user/positions", params)
             positions = result.get('data', [])
-            logger.info(f"VST Positions retrieved: {len(positions)} positions")
+            logger.info(f"📈 VST Demo Positions retrieved: {len(positions)} positions (Virtual)")
             return positions
         except Exception as e:
-            logger.error(f"Failed to get VST positions: {e}")
+            logger.error(f"❌ Failed to get VST demo positions: {e}")
             return []
     
     def get_vst_trade_history(self, symbol: str = None, limit: int = 100) -> List[Dict]:
@@ -185,10 +256,10 @@ class BingXVSTClient:
             
             result = self._make_request("GET", "/openApi/swap/v2/trade/allOrders", params)
             trades = result.get('orders', result.get('data', []))  # Try 'orders' first, then fall back to 'data'
-            logger.info(f"VST Trade history retrieved: {len(trades)} trades")
+            logger.info(f"📋 VST Demo Trade history retrieved: {len(trades)} trades (Virtual)")
             return trades
         except Exception as e:
-            logger.error(f"Failed to get VST trade history: {e}")
+            logger.error(f"❌ Failed to get VST demo trade history: {e}")
             return []
     
     # ============= 마켓 데이터 API (공개 API) =============
@@ -285,15 +356,15 @@ class BingXVSTClient:
                 'side': side.upper(),               # BUY/SELL
                 'positionSide': position_side.upper(),  # LONG/SHORT (perpetual futures 필수)
                 'type': order_type.upper(),         # MARKET/LIMIT
-                'quantity': quantity                # 숫자형으로 전송
+                'quantity': str(quantity)           # 문자열로 전송 (BingX API 요구사항)
             }
             
             # 선택적 파라미터
             if price is not None:
-                params['price'] = price
+                params['price'] = str(price)
                 
             if stop_price is not None:
-                params['stopPrice'] = stop_price
+                params['stopPrice'] = str(stop_price)
                 
             # timeInForce는 LIMIT 주문에만 적용
             if order_type.upper() == 'LIMIT':
@@ -301,13 +372,13 @@ class BingXVSTClient:
             
             result = self._make_request("POST", "/openApi/swap/v2/trade/order", params)
             
-            # 성공 로깅
+            # VST 데모 주문 성공 로깅
             if result.get('code') == 0:
                 order_id = result.get('data', {}).get('orderId', 'N/A')
-                logger.info(f"VST Order placed successfully: {order_id}")
-                logger.info(f"Order details: {symbol} {side} {quantity}")
+                logger.info(f"🎮 VST Demo Order placed successfully: {order_id}")
+                logger.info(f"📊 Demo Order details: {symbol} {side} {quantity} (Virtual Funds)")
             else:
-                logger.error(f"VST Order failed: {result}")
+                logger.error(f"❌ VST Demo Order failed: {result}")
             
             return result
             

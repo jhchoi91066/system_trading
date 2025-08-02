@@ -34,7 +34,7 @@ export default function Home() {
   // Backtesting state
   const [backtestResults, setBacktestResults] = useState<any>(null);
   const [backtestParams, setBacktestParams] = useState({
-    exchange_id: 'binance',
+    exchange_id: 'bingx_vst',
     symbol: 'BTC/USDT',
     timeframe: '1d',
     limit: 100,
@@ -46,6 +46,10 @@ export default function Home() {
   });
   const [chartTimeframe, setChartTimeframe] = useState('1h');
   const [loadingBacktest, setLoadingBacktest] = useState(false);
+  
+  // 전략 상태 관리
+  const [activeStrategies, setActiveStrategies] = useState<any[]>([]);
+  const [loadingStrategies, setLoadingStrategies] = useState(false);
 
   useEffect(() => {
     const fetchExchanges = async () => {
@@ -113,6 +117,27 @@ export default function Home() {
       }
     };
     fetchTicker();
+  }, [backtestParams.exchange_id, backtestParams.symbol]);
+
+  // 전략 목록 가져오기
+  const fetchStrategies = async () => {
+    setLoadingStrategies(true);
+    try {
+      const response = await fetchWithAuth('http://127.0.0.1:8000/strategies');
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      const data = await response.json();
+      setActiveStrategies(data.filter((s: any) => s.status === 'active'));
+    } catch (e: any) {
+      console.error('Failed to fetch strategies:', e);
+    } finally {
+      setLoadingStrategies(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchStrategies();
   }, [backtestParams.exchange_id, backtestParams.symbol]);
 
 
@@ -296,37 +321,45 @@ export default function Home() {
           </NoSSR>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
             <button
-              onClick={() => {
-                // Activate trading strategy
-                fetch('http://127.0.0.1:8000/trading/activate', { method: 'POST' })
-                  .then(res => res.json())
-                  .then(data => {
-                    if (data.success) {
-                      alert('Trading strategy activated successfully!');
-                    } else {
-                      alert('Failed to activate strategy: ' + data.error);
-                    }
-                  })
-                  .catch(err => alert('Error: ' + err.message));
+              onClick={async () => {
+                setLoadingStrategies(true);
+                try {
+                  const response = await fetchWithAuth('http://127.0.0.1:8000/trading/activate', { method: 'POST' });
+                  const data = await response.json();
+                  
+                  if (data.success) {
+                    alert(`Trading strategy activated successfully!\nStrategy ID: ${data.strategy_id}\nStatus: ${data.status}`);
+                    // 전략 목록 새로고침
+                    await fetchStrategies();
+                  } else {
+                    alert('Failed to activate strategy: ' + data.error);
+                  }
+                } catch (err: any) {
+                  alert('Error: ' + err.message);
+                } finally {
+                  setLoadingStrategies(false);
+                }
               }}
               className="linear-button-primary py-3 px-6"
+              disabled={loadingStrategies}
             >
-              🚀 Start Demo Trading
+              {loadingStrategies ? '⏳ Activating...' : '🚀 Start Demo Trading'}
             </button>
             
             <button
-              onClick={() => {
-                // Place a manual test order
-                fetch('http://127.0.0.1:8000/trading/order', { method: 'POST' })
-                  .then(res => res.json())
-                  .then(data => {
-                    if (data.success) {
-                      alert('Test order placed successfully!');
-                    } else {
-                      alert('Failed to place order: ' + data.error);
-                    }
-                  })
-                  .catch(err => alert('Error: ' + err.message));
+              onClick={async () => {
+                try {
+                  const response = await fetchWithAuth('http://127.0.0.1:8000/trading/order', { method: 'POST' });
+                  const data = await response.json();
+                  
+                  if (data.success) {
+                    alert(`Test order placed successfully!\nDetails: ${JSON.stringify(data.order, null, 2)}`);
+                  } else {
+                    alert('Failed to place order: ' + data.error);
+                  }
+                } catch (err: any) {
+                  alert('Error: ' + err.message);
+                }
               }}
               className="linear-button-secondary py-3 px-6"
             >
@@ -334,18 +367,19 @@ export default function Home() {
             </button>
             
             <button
-              onClick={() => {
-                // Check VST status
-                fetch('http://127.0.0.1:8000/vst/status')
-                  .then(res => res.json())
-                  .then(data => {
-                    if (data.status === 'connected') {
-                      alert(`VST Connected!\nBalance: $${data.vst_balance}\nPositions: ${data.open_positions}/${data.total_positions}`);
-                    } else {
-                      alert('VST Status: ' + data.status + '\nError: ' + (data.error || 'Unknown'));
-                    }
-                  })
-                  .catch(err => alert('Error: ' + err.message));
+              onClick={async () => {
+                try {
+                  const response = await fetchWithAuth('http://127.0.0.1:8000/vst/status');
+                  const data = await response.json();
+                  
+                  if (data.status === 'connected') {
+                    alert(`VST Connected! ✅\nBalance: $${data.vst_balance}\nEquity: $${data.equity}\nPositions: ${data.open_positions}/${data.total_positions}\nUnrealized PnL: $${data.unrealized_pnl}`);
+                  } else {
+                    alert('VST Status: ' + data.status + '\nError: ' + (data.error || 'Unknown'));
+                  }
+                } catch (err: any) {
+                  alert('Error: ' + err.message);
+                }
               }}
               className="linear-button-ghost py-3 px-6"
             >
@@ -353,17 +387,22 @@ export default function Home() {
             </button>
             
             <button
-              onClick={() => {
-                // View trading history
-                fetch('http://127.0.0.1:8000/trading/history')
-                  .then(res => res.json())
-                  .then(data => {
-                    const historyText = data.slice(0, 3).map((trade: any) => 
-                      `${trade.side} ${trade.amount} ${trade.symbol} @ $${trade.price}`
+              onClick={async () => {
+                try {
+                  const response = await fetchWithAuth('http://127.0.0.1:8000/trading/history');
+                  const data = await response.json();
+                  
+                  if (Array.isArray(data) && data.length > 0) {
+                    const historyText = data.slice(0, 5).map((trade: any) => 
+                      `${trade.side} ${trade.amount} ${trade.symbol} @ $${parseFloat(trade.price).toFixed(2)} | PnL: $${trade.pnl?.toFixed(2) || 'N/A'}`
                     ).join('\n');
-                    alert('Recent Trades:\n' + (historyText || 'No recent trades'));
-                  })
-                  .catch(err => alert('Error: ' + err.message));
+                    alert('Recent Trades (Last 5):\n' + historyText);
+                  } else {
+                    alert('No recent trades found.');
+                  }
+                } catch (err: any) {
+                  alert('Error: ' + err.message);
+                }
               }}
               className="linear-button-ghost py-3 px-6"
             >
@@ -376,7 +415,106 @@ export default function Home() {
               <strong>🧪 Demo Trading Mode</strong>
             </p>
             <p className="text-blue-200">
-              Using BingX VST (Virtual Simulated Trading) with virtual funds. All trades are simulated but use real market data and BingX's demo trading platform.
+              Using BingX VST (Virtual Simulated Trading) with virtual funds. Activated strategies run automatically every minute and analyze real market data for trading signals.
+            </p>
+          </div>
+        </div>
+
+        {/* Active Strategies */}
+        <div className="linear-card mt-8">
+          <h2 className="text-h3 mb-6">Active Trading Strategies</h2>
+          {loadingStrategies ? (
+            <div className="text-center py-4">
+              <div className="animate-spin text-2xl mb-2">⏳</div>
+              <div className="text-secondary">Loading strategies...</div>
+            </div>
+          ) : activeStrategies.length > 0 ? (
+            <div className="space-y-4">
+              {activeStrategies.map((strategy: any) => (
+                <div key={strategy.id} className="glass-medium p-4 rounded-lg">
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <h3 className="text-body font-medium text-white mb-2">{strategy.name}</h3>
+                      <p className="text-small text-secondary">{strategy.description}</p>
+                      <div className="flex space-x-4 mt-2 text-xs text-secondary">
+                        <span>Executions: {strategy.execution_count || 0}</span>
+                        <span>Trades: {strategy.total_trades || 0}</span>
+                        <span>Created: {new Date(strategy.created_at * 1000).toLocaleString()}</span>
+                      </div>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <span className={`px-2 py-1 rounded text-xs font-medium ${
+                        strategy.status === 'active' ? 'bg-green-600 text-white' : 'bg-gray-600 text-gray-300'
+                      }`}>
+                        {strategy.status.toUpperCase()}
+                      </span>
+                      <button
+                        onClick={async () => {
+                          try {
+                            const response = await fetchWithAuth(`http://127.0.0.1:8000/strategies/stop/${strategy.id}`, { method: 'POST' });
+                            const data = await response.json();
+                            if (data.success) {
+                              alert('Strategy stopped successfully!');
+                              await fetchStrategies();
+                            } else {
+                              alert('Failed to stop strategy: ' + data.error);
+                            }
+                          } catch (err: any) {
+                            alert('Error: ' + err.message);
+                          }
+                        }}
+                        className="linear-button-ghost py-1 px-2 text-xs"
+                      >
+                        Stop
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="glass-light p-6 rounded-lg text-center">
+              <div className="text-4xl mb-4">🤖</div>
+              <p className="text-body text-secondary mb-2">No Active Strategies</p>
+              <p className="text-small text-secondary">
+                Click "Start Demo Trading" to activate your first strategy.
+              </p>
+            </div>
+          )}
+          <div className="mt-4 flex justify-between items-center">
+            <div className="flex space-x-2">
+              <button
+                onClick={fetchStrategies}
+                className="linear-button-secondary py-2 px-4 text-sm"
+                disabled={loadingStrategies}
+              >
+                {loadingStrategies ? 'Refreshing...' : '🔄 Refresh'}
+              </button>
+              <button
+                onClick={async () => {
+                  try {
+                    const response = await fetchWithAuth('http://127.0.0.1:8000/strategies/signals');
+                    const data = await response.json();
+                    
+                    if (data.signals && data.signals.length > 0) {
+                      const signalsText = data.signals.slice(0, 5).map((signal: any) => 
+                        `${signal.signal} ${signal.quantity} BTC @ $${signal.price.toFixed(2)}\n${new Date(signal.timestamp * 1000).toLocaleString()}`
+                      ).join('\n\n');
+                      alert(`Trading Signals (Last 5):\n\n${signalsText}\n\nTotal Signals: ${data.total_signals}`);
+                    } else {
+                      alert('No trading signals found yet.\nSignals will appear when strategies detect buy/sell opportunities.');
+                    }
+                  } catch (err: any) {
+                    alert('Error: ' + err.message);
+                  }
+                }}
+                className="linear-button-ghost py-2 px-4 text-sm"
+              >
+                📊 View Signals
+              </button>
+            </div>
+            <p className="text-xs text-secondary">
+              Strategies execute automatically every minute when active
             </p>
           </div>
         </div>

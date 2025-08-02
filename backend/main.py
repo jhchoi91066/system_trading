@@ -33,6 +33,7 @@ from position_manager import position_manager
 from risk_manager import risk_manager, RiskLimits
 from demo_trading import demo_simulator, is_demo_mode_enabled, switch_trading_mode
 from performance_analyzer import performance_analyzer, convert_trades_to_returns, calculate_rolling_metrics
+from bingx_vst_client import create_vst_client_from_env
 
 # Load environment variables
 load_dotenv()
@@ -1212,11 +1213,19 @@ async def get_fund_management_settings(user_id: str = Depends(get_current_user))
     """Get user's fund management settings"""
     try:
         settings = persistent_storage.get_fund_settings(user_id)
+        
+        # Fetch real VST balance
+        vst_client = create_vst_client_from_env()
+        vst_account_info = await vst_client.get_vst_account_info()
+        
+        real_total_capital = float(vst_account_info.get('total_asset', settings.get('total_capital', 10000.0)))
+        real_available_capital = float(vst_account_info.get('available_balance', settings.get('total_capital', 10000.0)))
+
         if not settings:
-            # Return default settings
+            # Return default settings, but use real VST balance for total_capital
             default_settings = {
                 "user_id": user_id,
-                "total_capital": 10000.0,
+                "total_capital": real_total_capital,
                 "max_risk_per_trade": 2.0,
                 "max_daily_loss": 5.0,
                 "max_portfolio_risk": 10.0,
@@ -1225,7 +1234,12 @@ async def get_fund_management_settings(user_id: str = Depends(get_current_user))
                 "emergency_stop_loss": 20.0
             }
             persistent_storage.save_fund_settings(user_id, default_settings)
-            return default_settings
+            settings = default_settings
+        
+        # Update settings with real-time VST balance
+        settings['total_capital'] = real_total_capital
+        settings['available_capital'] = real_available_capital # Add available_capital to settings
+
         return settings
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error fetching fund management settings: {str(e)}")
@@ -1255,24 +1269,29 @@ async def update_fund_management_settings(settings: FundManagementSettings, user
 async def get_risk_metrics(user_id: str = Depends(get_current_user)):
     """Get current risk metrics and analysis"""
     try:
-        # Get active strategies and calculate risk exposure
-        active_strategies = persistent_storage.get_active_strategies(user_id)
-        
         # Get fund management settings
         settings = persistent_storage.get_fund_settings(user_id)
         
-        total_capital = settings["total_capital"]
-        total_allocated = sum(strategy.get('allocated_capital', 0) for strategy in active_strategies)
+        # Fetch real VST account info and positions
+        vst_client = create_vst_client_from_env()
+        vst_account_info = await vst_client.get_vst_account_info()
+        vst_positions = await vst_client.get_vst_positions()
+
+        total_capital = float(vst_account_info.get('total_asset', settings["total_capital"])) # Use real total asset
         
-        # Calculate risk metrics (simplified for demo)
+        # Calculate total allocated from real VST positions
+        total_allocated = sum(float(pos.get('positionAmt', 0)) * float(pos.get('avgPrice', 0)) for pos in vst_positions if float(pos.get('positionAmt', 0)) != 0)
+        
+        # Calculate risk metrics
         current_risk_exposure = (total_allocated / total_capital * 100) if total_capital > 0 else 0
-        daily_pnl = 0.0  # Would be calculated from actual trades
-        max_drawdown = 0.0  # Would be calculated from historical data
         
-        # Calculate additional metrics
-        win_rate = 65.0  # Mock data - would be calculated from trade history
-        sharpe_ratio = 1.25  # Mock data
-        profit_factor = 1.8  # Mock data
+        # Placeholder for daily_pnl, max_drawdown, sharpe_ratio, win_rate, profit_factor
+        # These would require more complex calculations based on historical trade data and equity curve
+        daily_pnl = 0.0  
+        max_drawdown = 0.0  
+        win_rate = 0.0  
+        sharpe_ratio = 0.0  
+        profit_factor = 0.0  
         
         risk_status = "SAFE"
         if current_risk_exposure > settings.get("max_portfolio_risk", 10.0):
@@ -1290,7 +1309,7 @@ async def get_risk_metrics(user_id: str = Depends(get_current_user)):
             "risk_status": risk_status,
             "total_allocated": total_allocated,
             "available_capital": total_capital - total_allocated,
-            "active_strategies_count": len(active_strategies)
+            "active_strategies_count": len(vst_positions) # Use real active positions count
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error calculating risk metrics: {str(e)}")

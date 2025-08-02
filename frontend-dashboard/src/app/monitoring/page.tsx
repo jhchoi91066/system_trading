@@ -6,6 +6,8 @@ import { useWebSocket } from '@/contexts/WebSocketProvider';
 
 export default function MonitoringPage() {
   const [lastUpdateTime, setLastUpdateTime] = useState<string>('');
+  const [btcInterval, setBtcInterval] = useState<string>('1h');
+  const [ethInterval, setEthInterval] = useState<string>('1h');
   const { data, isConnected: wsConnected, error: wsError, sendMessage } = useWebSocket();
   const { portfolio_stats: portfolioStats, active_strategies: activeStrategies, performance_data: performanceData } = data;
 
@@ -94,18 +96,58 @@ export default function MonitoringPage() {
 
         {/* Real-time Trading Charts */}
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-8 mb-8">
-          <TradingChart 
-            symbol="BTC/USDT"
-            exchange="binance"
-            height={400}
-            interval="1h"
-          />
-          <TradingChart 
-            symbol="ETH/USDT"
-            exchange="binance"
-            height={400}
-            interval="1h"
-          />
+          <div>
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-h3">BTC/USDT Chart</h3>
+              <div className="flex space-x-1">
+                {['1m', '5m', '15m', '1h', '4h', '1d'].map((tf) => (
+                  <button
+                    key={tf}
+                    onClick={() => setBtcInterval(tf)}
+                    className={`px-2 py-1 text-xs rounded transition-colors ${
+                      tf === btcInterval
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                    }`}
+                  >
+                    {tf}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <TradingChart 
+              symbol="BTC/USDT"
+              exchange="bingx_vst"
+              height={400}
+              interval={btcInterval}
+            />
+          </div>
+          <div>
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-h3">ETH/USDT Chart</h3>
+              <div className="flex space-x-1">
+                {['1m', '5m', '15m', '1h', '4h', '1d'].map((tf) => (
+                  <button
+                    key={tf}
+                    onClick={() => setEthInterval(tf)}
+                    className={`px-2 py-1 text-xs rounded transition-colors ${
+                      tf === ethInterval
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                    }`}
+                  >
+                    {tf}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <TradingChart 
+              symbol="ETH/USDT"
+              exchange="bingx_vst"
+              height={400}
+              interval={ethInterval}
+            />
+          </div>
         </div>
 
         {/* Portfolio Overview */}
