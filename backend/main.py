@@ -15,7 +15,7 @@ from strategy import (
 from advanced_indicators import AdvancedIndicators, calculate_all_indicators
 from uuid import UUID, uuid4
 from datetime import datetime, timedelta
-from typing import List, Optional, Set
+from typing import List, Optional, Set, Dict
 import json
 import os
 import logging
@@ -335,6 +335,9 @@ class RiskMetrics(BaseModel):
     sharpe_ratio: float = 0.0
     win_rate: float = 0.0
     profit_factor: float = 0.0
+
+class MarketPrices(BaseModel):
+    prices: Dict[str, float]
 
 # Placeholder for encryption/decryption
 def encrypt_data(data: str) -> str:
@@ -934,6 +937,33 @@ async def get_trading_history(user_id: str = Depends(get_current_user)):
     except Exception as e:
         print(f"Database error in trading history: {e}")
     
+    # Try to get BingX VST demo trades
+    try:
+        demo_trades = demo_simulator.get_trade_history(user_id, limit=50)
+        if demo_trades:
+            # Convert demo trades to trading history format
+            converted_trades = []
+            for i, trade in enumerate(demo_trades):
+                converted_trades.append({
+                    "id": i + 1,
+                    "user_id": user_id,
+                    "strategy_name": f"{trade.get('side', '').title()} Strategy",
+                    "exchange_name": "bingx_vst",
+                    "symbol": trade.get("symbol", "BTC/USDT"),
+                    "side": trade.get("side", "buy"),
+                    "amount": float(trade.get("amount", 0.0)),
+                    "price": float(trade.get("price", 0.0)),
+                    "fee": float(trade.get("fee", 0.0)) if trade.get("fee") is not None else 0.0,
+                    "profit_loss": float(trade.get("profit_loss", 0.0)) if trade.get("profit_loss") is not None else 0.0,
+                    "profit_loss_percentage": float(trade.get("profit_percent", 0.0)) if trade.get("profit_percent") is not None else 0.0,
+                    "status": trade.get("status", "completed"),
+                    "created_at": trade.get("timestamp", datetime.now().isoformat()),
+                    "closed_at": trade.get("timestamp", datetime.now().isoformat())
+                })
+            return converted_trades
+    except Exception as e:
+        print(f"Error getting demo trades: {e}")
+    
     # Fallback to memory storage - generate some mock trading history for demonstration
     mock_trades = [
         {
@@ -1052,10 +1082,32 @@ async def get_portfolio_stats(user_id: str = Depends(get_current_user)):
         if not active_strategies:
             active_strategies = persistent_storage.get_active_strategies(user_id)
         
-        # Calculate portfolio stats
-        total_allocated = sum(strategy.get('allocated_capital', 0) for strategy in active_strategies)
-        total_capital = 10000  # This would come from user settings
-        available_capital = total_capital - total_allocated
+        # Try to get actual BingX VST balance
+        try:
+            from bingx_client import BingXClient
+            
+            # Get BingX VST credentials (would normally come from user settings)
+            api_key = os.getenv('BINGX_API_KEY', '')
+            secret_key = os.getenv('BINGX_SECRET_KEY', '')
+            
+            if api_key and secret_key:
+                vst_client = BingXClient(api_key, secret_key, demo=True)  # VST mode
+                vst_balance = vst_client.get_balance()
+                
+                if vst_balance and 'balance' in vst_balance:
+                    total_capital = float(vst_balance['balance'])
+                    available_capital = total_capital  # For now, assume all is available
+                    total_allocated = 0  # VST doesn't track allocated separately
+                else:
+                    raise Exception("No VST balance data received")
+            else:
+                raise Exception("No BingX API credentials found")
+        except Exception as e:
+            print(f"Error getting VST balance, using defaults: {e}")
+            # Calculate portfolio stats (fallback)
+            total_allocated = sum(strategy.get('allocated_capital', 0) for strategy in active_strategies)
+            total_capital = 10000  # This would come from user settings
+            available_capital = total_capital - total_allocated
         
         # Get recent trades for P&L calculation (simplified)
         try:
@@ -1965,36 +2017,36 @@ async def compare_strategies(
 
 # 자동 트레이딩 엔드포인트
 
-@app.post("/trading/auto/start")
-async def start_auto_trading(
-    exchange_name: str = Query(..., description="Exchange name (e.g., binance)"),
-    symbol: str = Query(..., description="Trading symbol (e.g., BTC/USDT)"),
-    timeframe: str = Query(default="1h", description="Timeframe (1m, 5m, 15m, 1h, 4h, 1d)"),
-    strategy_type: str = Query(..., description="Strategy type"),
-    user_id: str = Depends(get_current_user)
-):
-    """자동 트레이딩 시작"""
-    try:
-        # API 키 확인
-        api_keys_response = supabase.table("api_keys").select("*").eq("user_id", user_id).eq("exchange_name", exchange_name).eq("is_active", True).execute()
-        
-        if not api_keys_response.data:
-            raise HTTPException(status_code=400, detail=f"No active API keys found for {exchange_name}")
-        
-        api_key_data = api_keys_response.data[0]
-        api_key = api_key_data["api_key"]
-        secret = api_key_data["secret"]
-        
-        # 거래소 초기화 (테스트넷 사용)
-        success = await trading_engine.initialize_exchange(exchange_name, api_key, secret, sandbox=True)
-        
-        if not success:
-            raise HTTPException(status_code=500, detail="Failed to initialize exchange")
-        
-        # 활성화된 전략 조회
-        strategies_data = persistent_storage.get_active_strategies(user_id)
+# @app.post("/trading/auto/start")
+# async def start_auto_trading(
+#     exchange_name: str = Query(..., description="Exchange name (e.g., binance)"),
+#     symbol: str = Query(..., description="Trading symbol (e.g., BTC/USDT)"),
+#     timeframe: str = Query(default="1h", description="Timeframe (1m, 5m, 15m, 1h, 4h, 1d)"),
+#     strategy_type: str = Query(..., description="Strategy type"),
+#     user_id: str = Depends(get_current_user)
+# ):
+#     """자동 트레이딩 시작"""
+#     try:
+#         # API 키 확인
+#         api_keys_response = supabase.table("api_keys").select("*").eq("user_id", user_id).eq("exchange_name", exchange_name).eq("is_active", True).execute()
+#         
+#         if not api_keys_response.data:
+#             raise HTTPException(status_code=400, detail=f"No active API keys found for {exchange_name}")
+#         
+#         api_key_data = api_keys_response.data[0]
+#         api_key = api_key_data["api_key"]
+#         secret = api_key_data["secret"]
+#         
+#         # 거래소 초기화 (테스트넷 사용)
+#         success = await trading_engine.initialize_exchange(exchange_name, api_key, secret, sandbox=True)
+#         
+#         if not success:
+#             raise HTTPException(status_code=500, detail="Failed to initialize exchange")
+#         
+#         # 활성화된 전략 조회
+#         strategies_data = persistent_storage.get_active_strategies(user_id)
         matching_strategies = [
-            strategy for strategy in strategies_data 
+            strategy for strategy in strategies_data
             if (strategy.get('exchange_name') == exchange_name and 
                 strategy.get('symbol') == symbol and
                 strategy.get('strategy_type') == strategy_type and
@@ -2679,18 +2731,15 @@ async def get_demo_mode(user_id: str = Depends(get_current_user)):
         raise HTTPException(status_code=500, detail=f"Error getting trading mode: {str(e)}")
 
 @app.post("/demo/market-update")
-async def update_demo_market_prices(
-    prices: dict = Query(..., description="심볼별 가격 정보"),
-    user_id: str = Depends(get_current_user)
-):
+async def update_demo_market_prices(prices: MarketPrices, user_id: str = Depends(get_current_user)):
     """데모 시장 가격 업데이트 (포지션 PnL 계산용)"""
     try:
-        demo_simulator.update_market_prices(prices)
-        logger.info(f"Market prices updated by user {user_id} for symbols: {list(prices.keys())}")
+        demo_simulator.update_market_prices(prices.prices)
+        logger.info(f"Market prices updated by user {user_id} for symbols: {list(prices.prices.keys())}")
         
         return {
             "message": "Market prices updated successfully",
-            "updated_symbols": list(prices.keys()),
+            "updated_symbols": list(prices.prices.keys()),
             "user_id": user_id
         }
         

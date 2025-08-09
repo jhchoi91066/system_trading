@@ -1,74 +1,116 @@
-@import "tailwindcss";
 @import url('https://rsms.me/inter/inter.css');
 
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
 :root {
-  /* Linear Design System - Colors */
-  --linear-bg-primary: #08090a;
-  --linear-bg-surface: #23252a;
-  --linear-text-primary: #f7f8f8;
-  --linear-text-secondary: #8a8f98;
-  --linear-text-white: #ffffff;
-  --linear-interactive-link: #ffffff;
-  --linear-button-bg: rgba(0, 0, 0, 0);
-  --linear-button-text: #8a8f98;
-  --linear-accent-glass: rgba(255, 255, 255, 0.08);
-  --linear-accent-glass-medium: rgba(255, 255, 255, 0.05);
-  --linear-accent-overlay: rgba(10, 10, 10, 0.8);
-  --linear-accent-border: rgba(255, 255, 255, 0.1);
-  --linear-accent-subtle: rgba(40, 40, 40, 0.2);
-  --linear-status-error: rgba(197, 40, 40, 0.25);
-  --linear-status-warning: rgba(242, 153, 74, 0.25);
-  --linear-status-success: rgba(40, 197, 40, 0.25);
-  --linear-status-info: rgba(40, 120, 197, 0.25);
+  /* Youware Design System - Colors */
+  --yw-primary: #28a745;
+  --yw-primary-hover: #218838;
+  --yw-success: #28a745;
+  --yw-danger: #dc3545;
+  --yw-warning: #ffc107;
+  --yw-info: #17a2b8;
+  --yw-light: #f8f9fa;
+  --yw-dark: #343a40;
+  --yw-white: #ffffff;
   
-  /* Linear Design System - Typography */
-  --linear-font-family: "Inter Variable", "SF Pro Display", -apple-system, "system-ui", "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, "Open Sans", "Helvetica Neue", sans-serif;
+  /* Gray Scale */
+  --yw-gray-100: #f8f9fa;
+  --yw-gray-200: #e9ecef;
+  --yw-gray-300: #dee2e6;
+  --yw-gray-400: #ced4da;
+  --yw-gray-500: #adb5bd;
+  --yw-gray-600: #6c757d;
+  --yw-gray-700: #495057;
+  --yw-gray-800: #343a40;
+  --yw-gray-900: #212529;
   
-  /* Linear Design System - Spacing */
-  --linear-space-xs: 4px;
-  --linear-space-sm: 8px;
-  --linear-space-md: 12px;
-  --linear-space-lg: 16px;
-  --linear-space-xl: 24px;
-  --linear-space-2xl: 32px;
-  --linear-space-3xl: 48px;
-  --linear-space-4xl: 64px;
-  --linear-space-5xl: 96px;
-  --linear-space-6xl: 128px;
+  /* Background Colors */
+  --yw-bg-main: #f8f9fa;
+  --yw-bg-card: #ffffff;
+  --yw-bg-nav: #343a40;
   
-  /* Linear Design System - Border Radius */
-  --linear-radius-sm: 4px;
-  --linear-radius-md: 8px;
-  --linear-radius-lg: 12px;
-  --linear-radius-xl: 16px;
+  /* Text Colors */
+  --yw-text-primary: #212529;
+  --yw-text-secondary: #6c757d;
+  --yw-text-muted: #6c757d;
+  --yw-text-white: #ffffff;
   
-  /* Linear Design System - Shadows */
-  --linear-shadow-subtle: rgba(0, 0, 0, 0) 0px 8px 2px 0px, rgba(0, 0, 0, 0.01) 0px 5px 2px 0px, rgba(0, 0, 0, 0.04) 0px 3px 2px 0px, rgba(0, 0, 0, 0.07) 0px 1px 1px 0px, rgba(0, 0, 0, 0.08) 0px 0px 1px 0px;
-  --linear-shadow-medium: rgba(0, 0, 0, 0.2) 0px 4px 24px 0px;
-  --linear-shadow-large: rgba(0, 0, 0, 0.35) 0px 7px 32px 0px;
-  --linear-shadow-glass: rgba(255, 255, 255, 0.04) 0px 1.503px 5.261px 0px inset, rgba(255, 255, 255, 0.1) 0px -0.752px 0.752px 0px inset;
+  /* Border */
+  --yw-border-color: #dee2e6;
   
-  /* Linear Design System - Gradients */
-  --linear-gradient-glass: linear-gradient(134deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.02), rgba(255, 255, 255, 0) 55%);
-  --linear-gradient-surface-subtle: linear-gradient(rgba(255, 255, 255, 0.05), rgba(0, 0, 0, 0) 20%);
+  /* Status Colors */
+  --yw-positive: #28a745;
+  --yw-negative: #dc3545;
+  --yw-nav-active: #28a745;
   
-  /* Linear Design System - Transitions */
-  --linear-transition-fast: 0.1s cubic-bezier(0.25, 0.46, 0.45, 0.94);
-  --linear-transition-normal: 0.16s cubic-bezier(0.25, 0.46, 0.45, 0.94);
-  --linear-transition-slow: 0.2s cubic-bezier(0.25, 0.46, 0.45, 0.94);
-  --linear-transition-all: border 0.16s cubic-bezier(0.25, 0.46, 0.45, 0.94), background-color 0.16s cubic-bezier(0.25, 0.46, 0.45, 0.94), color 0.16s cubic-bezier(0.25, 0.46, 0.45, 0.94), box-shadow 0.16s cubic-bezier(0.25, 0.46, 0.45, 0.94), opacity 0.16s cubic-bezier(0.25, 0.46, 0.45, 0.94), filter 0.16s cubic-bezier(0.25, 0.46, 0.45, 0.94), transform 0.16s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  /* Typography */
+  --yw-font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --yw-font-size-base: 14px;
+  --yw-font-size-sm: 12px;
+  --yw-font-size-lg: 16px;
+  --yw-font-weight-normal: 400;
+  --yw-font-weight-medium: 500;
+  --yw-font-weight-semibold: 600;
+  --yw-font-weight-bold: 700;
+  --yw-line-height-base: 1.5;
+  
+  /* Heading Sizes */
+  --yw-h1-size: 36px;
+  --yw-h1-weight: 700;
+  --yw-h1-line-height: 1.2;
+  --yw-h1-margin: 24px;
+  
+  --yw-h2-size: 28px;
+  --yw-h2-weight: 600;
+  --yw-h2-line-height: 1.3;
+  --yw-h2-margin: 20px;
+  
+  --yw-h3-size: 20px;
+  --yw-h3-weight: 600;
+  --yw-h3-line-height: 1.4;
+  --yw-h3-margin: 16px;
+  
+  --yw-h4-size: 16px;
+  --yw-h4-weight: 600;
+  --yw-h4-line-height: 1.4;
+  --yw-h4-margin: 12px;
+  
+  /* Spacing */
+  --yw-space-xs: 4px;
+  --yw-space-sm: 8px;
+  --yw-space-md: 12px;
+  --yw-space-lg: 16px;
+  --yw-space-xl: 24px;
+  --yw-space-xxl: 32px;
+  --yw-space-xxxl: 48px;
+  
+  /* Border Radius */
+  --yw-radius-sm: 4px;
+  --yw-radius-md: 6px;
+  --yw-radius-lg: 8px;
+  --yw-radius-xl: 12px;
+  
+  /* Shadows */
+  --yw-shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  --yw-shadow-md: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
+  --yw-shadow-lg: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  --yw-shadow-xl: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+  
+  /* Layout */
+  --yw-header-height: 60px;
+  --yw-nav-height: 50px;
+  --yw-main-padding: 24px;
+  --yw-grid-gap: 24px;
 }
 
-@theme inline {
-  --color-background: var(--linear-bg-primary);
-  --color-foreground: var(--linear-text-primary);
-  --font-sans: var(--linear-font-family);
-  --font-mono: var(--font-geist-mono);
-}
-
-@supports (font-variation-settings: normal) {
-  html { font-family: 'Inter Variable', var(--linear-font-family); }
-}
+/* @theme inline {
+  --color-background: var(--ds-bg-primary);
+  --color-foreground: var(--ds-text-primary);
+  --font-sans: var(--ds-font-family);
+} */
 
 * {
   box-sizing: border-box;
@@ -76,210 +118,391 @@
 
 html {
   scroll-behavior: smooth;
-  font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
 }
 
 body {
   margin: 0;
   padding: 0;
-  background: var(--linear-bg-primary);
-  color: var(--linear-text-primary);
-  font-family: var(--linear-font-family);
-  font-size: 16px;
-  line-height: 1.5;
-  font-weight: 400;
-  letter-spacing: normal;
+  background: var(--yw-bg-main);
+  color: var(--yw-text-primary);
+  font-family: var(--yw-font-family);
+  font-size: var(--yw-font-size-base);
+  line-height: var(--yw-line-height-base);
+  font-weight: var(--yw-font-weight-normal);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  text-rendering: optimizeSpeed;
 }
 
-/* Linear Design System Typography Classes */
-.text-hero {
-  font-size: 56px;
-  line-height: 61.6px;
-  font-weight: 538;
-  letter-spacing: -1.82px;
+/* Youware Design System Typography Classes */
+.yw-h1, .text-h1, .ds-h1 {
+  font-size: var(--yw-h1-size);
+  font-weight: var(--yw-h1-weight);
+  line-height: var(--yw-h1-line-height);
+  margin: 0 0 var(--yw-h1-margin) 0;
+  color: var(--yw-text-primary);
+  text-align: center;
 }
 
-.text-h1 {
-  font-size: 48px;
-  line-height: 52.8px;
-  font-weight: 538;
-  letter-spacing: -1.44px;
+.yw-h2, .text-h2, .ds-h2 {
+  font-size: var(--yw-h2-size);
+  font-weight: var(--yw-h2-weight);
+  line-height: var(--yw-h2-line-height);
+  margin: 0 0 var(--yw-h2-margin) 0;
+  color: var(--yw-text-primary);
 }
 
-.text-h2 {
-  font-size: 32px;
-  line-height: 38.4px;
-  font-weight: 538;
-  letter-spacing: -0.64px;
+.yw-h3, .text-h3, .ds-h3 {
+  font-size: var(--yw-h3-size);
+  font-weight: var(--yw-h3-weight);
+  line-height: var(--yw-h3-line-height);
+  margin: 0 0 var(--yw-h3-margin) 0;
+  color: var(--yw-text-primary);
 }
 
-.text-h3 {
-  font-size: 21px;
-  line-height: 28px;
-  font-weight: 510;
-  letter-spacing: -0.37px;
+.yw-h4, .text-h4, .ds-h4 {
+  font-size: var(--yw-h4-size);
+  font-weight: var(--yw-h4-weight);
+  line-height: var(--yw-h4-line-height);
+  margin: 0 0 var(--yw-h4-margin) 0;
+  color: var(--yw-text-primary);
 }
 
-.text-body {
-  font-size: 16px;
-  line-height: 24px;
-  font-weight: 400;
-  letter-spacing: normal;
+.yw-body, .text-body, .ds-body {
+  font-size: var(--yw-font-size-base);
+  font-weight: var(--yw-font-weight-normal);
+  line-height: var(--yw-line-height-base);
+  color: var(--yw-text-primary);
 }
 
-.text-body-large {
-  font-size: 21px;
-  line-height: 27.93px;
-  font-weight: 510;
-  letter-spacing: -0.252px;
+.yw-small, .text-small, .ds-small {
+  font-size: var(--yw-font-size-sm);
+  font-weight: var(--yw-font-weight-normal);
+  line-height: var(--yw-line-height-base);
+  color: var(--yw-text-secondary);
 }
 
-.text-small {
-  font-size: 14px;
-  line-height: 20px;
-  font-weight: 510;
-  letter-spacing: normal;
+/* Youware Design System Component Classes */
+.yw-card, .linear-card {
+  background: var(--yw-bg-card);
+  border: 1px solid var(--yw-border-color);
+  border-radius: var(--yw-radius-lg);
+  padding: 20px;
+  box-shadow: var(--yw-shadow-md);
+  transition: box-shadow 0.2s ease-in-out;
 }
 
-.text-caption {
-  font-size: 13px;
-  line-height: 18px;
-  font-weight: 510;
-  letter-spacing: normal;
+.yw-card:hover, .linear-card:hover {
+  box-shadow: var(--yw-shadow-lg);
 }
 
-/* Linear Design System Component Classes */
-.linear-card {
-  background: var(--linear-accent-glass-medium);
-  border: 1px solid var(--linear-accent-border);
-  border-radius: var(--linear-radius-lg);
-  padding: var(--linear-space-xl);
-  backdrop-filter: blur(12px);
-  box-shadow: var(--linear-shadow-glass);
-  transition: var(--linear-transition-all);
+.yw-card-chart {
+  background: var(--yw-bg-card);
+  border: 1px solid var(--yw-border-color);
+  border-radius: var(--yw-radius-lg);
+  padding: 20px;
+  box-shadow: var(--yw-shadow-md);
+  height: 400px;
 }
 
-.linear-card:hover {
-  background: var(--linear-accent-glass);
-  border-color: rgba(255, 255, 255, 0.15);
-}
-
-.linear-button-primary {
-  background: var(--linear-button-bg);
-  color: var(--linear-text-white);
-  border: none;
-  border-radius: var(--linear-radius-md);
-  padding: var(--linear-space-md) var(--linear-space-xl);
-  font-size: 14px;
-  font-weight: 510;
+.yw-button-primary, .linear-button-primary {
+  background: var(--yw-primary);
+  color: var(--yw-white);
+  border: 1px solid var(--yw-primary);
+  border-radius: var(--yw-radius-md);
+  padding: 8px 16px;
+  font-size: var(--yw-font-size-base);
+  font-weight: var(--yw-font-weight-medium);
   cursor: pointer;
-  transition: color var(--linear-transition-fast), background var(--linear-transition-fast);
+  transition: all 0.2s ease-in-out;
   text-decoration: none;
   display: inline-flex;
   align-items: center;
   justify-content: center;
 }
 
-.linear-button-primary:hover {
-  background: var(--linear-accent-glass);
+.yw-button-primary:hover, .linear-button-primary:hover {
+  background: var(--yw-primary-hover);
+  border-color: #1e7e34;
 }
 
-.linear-button-secondary {
-  background: var(--linear-button-bg);
-  color: var(--linear-button-text);
-  border: none;
-  border-radius: var(--linear-radius-md);
-  padding: 0 var(--linear-space-md);
-  font-size: 13px;
-  font-weight: 510;
+.yw-button-danger {
+  background: var(--yw-danger);
+  color: var(--yw-white);
+  border: 1px solid var(--yw-danger);
+  border-radius: var(--yw-radius-md);
+  padding: 8px 16px;
+  font-size: var(--yw-font-size-base);
+  font-weight: var(--yw-font-weight-medium);
   cursor: pointer;
-  transition: color var(--linear-transition-fast), background var(--linear-transition-fast);
+  transition: all 0.2s ease-in-out;
   text-decoration: none;
   display: inline-flex;
   align-items: center;
   justify-content: center;
 }
 
-.linear-button-secondary:hover {
-  color: var(--linear-text-white);
-  background: var(--linear-accent-glass);
+.yw-button-danger:hover {
+  background: #c82333;
+  border-color: #bd2130;
 }
 
-.linear-input {
-  background: var(--linear-accent-glass-medium);
-  border: 1px solid var(--linear-accent-border);
-  border-radius: var(--linear-radius-md);
-  padding: var(--linear-space-md);
-  color: var(--linear-text-primary);
-  font-family: var(--linear-font-family);
-  font-size: 14px;
-  font-weight: 510;
-  transition: var(--linear-transition-all);
+.yw-button-outline, .linear-button-secondary {
+  background: transparent;
+  color: var(--yw-gray-600);
+  border: 1px solid var(--yw-border-color);
+  border-radius: var(--yw-radius-md);
+  padding: 8px 16px;
+  font-size: var(--yw-font-size-base);
+  font-weight: var(--yw-font-weight-medium);
+  cursor: pointer;
+  transition: all 0.2s ease-in-out;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.yw-button-outline:hover, .linear-button-secondary:hover {
+  background: var(--yw-gray-100);
+  border-color: var(--yw-gray-500);
+}
+
+.yw-button-timeframe {
+  background: var(--yw-gray-100);
+  color: var(--yw-gray-600);
+  border: 1px solid var(--yw-border-color);
+  border-radius: var(--yw-radius-sm);
+  padding: 6px 12px;
+  font-size: var(--yw-font-size-sm);
+  font-weight: var(--yw-font-weight-medium);
+  cursor: pointer;
+  transition: all 0.2s ease-in-out;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.yw-button-timeframe.active {
+  background: var(--yw-primary);
+  color: var(--yw-white);
+  border-color: var(--yw-primary);
+}
+
+.yw-input, .linear-input, .ds-input {
+  background: var(--yw-white);
+  border: 1px solid var(--yw-gray-400);
+  border-radius: var(--yw-radius-sm);
+  padding: 8px 12px;
+  color: var(--yw-gray-700);
+  font-family: var(--yw-font-family);
+  font-size: var(--yw-font-size-base);
+  font-weight: var(--yw-font-weight-normal);
+  transition: border-color 0.2s ease-in-out;
   outline: none;
+  width: 100%;
 }
 
-.linear-input:focus {
-  border-color: rgba(255, 255, 255, 0.2);
-  background: var(--linear-accent-glass);
-  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.05);
+.yw-input:focus, .linear-input:focus, .ds-input:focus {
+  border-color: #80bdff;
+  box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.25);
 }
 
-.linear-input::placeholder {
-  color: var(--linear-text-secondary);
+.yw-input::placeholder, .linear-input::placeholder, .ds-input::placeholder {
+  color: var(--yw-text-secondary);
 }
 
-.linear-select {
-  background: var(--linear-accent-glass-medium);
-  border: 1px solid var(--linear-accent-border);
-  border-radius: var(--linear-radius-md);
-  padding: var(--linear-space-md);
-  color: var(--linear-text-primary);
-  font-family: var(--linear-font-family);
-  font-size: 14px;
-  font-weight: 510;
-  transition: var(--linear-transition-all);
+.yw-select, .linear-select, .ds-select {
+  background: var(--yw-white);
+  border: 1px solid var(--yw-gray-400);
+  border-radius: var(--yw-radius-sm);
+  padding: 8px 12px;
+  color: var(--yw-gray-700);
+  font-family: var(--yw-font-family);
+  font-size: var(--yw-font-size-base);
+  font-weight: var(--yw-font-weight-normal);
+  transition: border-color 0.2s ease-in-out;
   outline: none;
   cursor: pointer;
+  width: 100%;
 }
 
-.linear-select:focus {
-  border-color: rgba(255, 255, 255, 0.2);
-  background: var(--linear-accent-glass);
-  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.05);
+.yw-select:focus, .linear-select:focus, .ds-select:focus {
+  border-color: #80bdff;
+  box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.25);
 }
 
-.linear-nav {
-  background: var(--linear-button-bg);
-  padding: 0;
-  border-bottom: none;
-  position: static;
-  z-index: auto;
+.yw-label {
+  font-size: var(--yw-font-size-base);
+  font-weight: var(--yw-font-weight-medium);
+  color: var(--yw-gray-700);
+  margin-bottom: 4px;
+  display: block;
 }
 
-.linear-nav-link {
-  color: var(--linear-text-white);
+/* Youware Design System Table */
+.yw-table, .ds-table {
+  width: 100%;
+  margin-bottom: 1rem;
+  background-color: var(--yw-white);
+  border-collapse: collapse;
+}
+
+.yw-table th, .ds-table th {
+  background: var(--yw-gray-100);
+  color: var(--yw-gray-700);
+  font-weight: var(--yw-font-weight-semibold);
+  font-size: var(--yw-font-size-sm);
+  text-transform: uppercase;
+  padding: 12px;
+  border-bottom: 1px solid var(--yw-border-color);
+  text-align: left;
+}
+
+.yw-table td, .ds-table td {
+  padding: 12px;
+  border-bottom: 1px solid var(--yw-gray-100);
+  font-size: var(--yw-font-size-base);
+  color: var(--yw-text-primary);
+  vertical-align: top;
+}
+
+.yw-table tbody tr:hover, .ds-table tbody tr:hover {
+  background-color: var(--yw-gray-100);
+}
+
+.yw-table-responsive {
+  display: block;
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* JSON Design System Grid */
+.ds-container {
+  width: 100%;
+  padding-right: var(--ds-space-lg);
+  padding-left: var(--ds-space-lg);
+  margin-right: auto;
+  margin-left: auto;
+}
+
+.ds-row {
+  display: flex;
+  flex-wrap: wrap;
+  margin-right: calc(-1 * var(--ds-space-lg) / 2);
+  margin-left: calc(-1 * var(--ds-space-lg) / 2);
+}
+
+.ds-col {
+  flex-basis: 0;
+  flex-grow: 1;
+  max-width: 100%;
+  padding-right: calc(var(--ds-space-lg) / 2);
+  padding-left: calc(var(--ds-space-lg) / 2);
+}
+
+/* Youware Design System Metrics */
+.yw-metrics-grid, .ds-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: var(--yw-grid-gap);
+  margin-bottom: var(--yw-space-xl);
+}
+
+.yw-metric-card, .ds-stat-card {
+  background: var(--yw-bg-card);
+  border: 1px solid var(--yw-border-color);
+  border-radius: var(--yw-radius-lg);
+  padding: 20px;
+  text-align: center;
+  box-shadow: var(--yw-shadow-md);
+}
+
+.yw-metric-value, .ds-stat-value {
+  font-size: var(--yw-h3-size);
+  font-weight: var(--yw-font-weight-semibold);
+  color: var(--yw-text-primary);
+  margin-bottom: 8px;
+  display: block;
+}
+
+.yw-metric-label, .ds-stat-label {
+  font-size: var(--yw-font-size-sm);
+  font-weight: var(--yw-font-weight-medium);
+  color: var(--yw-text-secondary);
+  text-transform: uppercase;
+  margin: 0;
+}
+
+/* Youware Status Colors */
+.yw-positive, .ds-status-positive {
+  color: var(--yw-positive);
+}
+
+.yw-negative, .ds-status-negative {
+  color: var(--yw-negative);
+}
+
+.yw-neutral, .ds-status-neutral {
+  color: var(--yw-text-primary);
+}
+
+.yw-text-positive {
+  color: var(--yw-positive);
+  font-weight: var(--yw-font-weight-semibold);
+}
+
+.yw-text-negative {
+  color: var(--yw-negative);
+  font-weight: var(--yw-font-weight-semibold);
+}
+
+.yw-text-neutral {
+  color: var(--yw-text-primary);
+  font-weight: var(--yw-font-weight-semibold);
+}
+
+/* Youware Layout Classes */
+.yw-main-content {
+  padding: var(--yw-main-padding);
+  background: var(--yw-bg-main);
+  min-height: calc(100vh - 110px);
+}
+
+.yw-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: var(--yw-grid-gap);
+}
+
+.yw-nav-item, .linear-nav, .linear-nav-link, .ds-nav, .ds-nav-link {
+  padding: 8px 16px;
+  color: var(--yw-text-secondary);
   text-decoration: none;
-  font-size: 14px;
-  font-weight: 510;
-  transition: color var(--linear-transition-fast);
+  font-size: var(--yw-font-size-base);
+  font-weight: var(--yw-font-weight-medium);
+  transition: color 0.2s ease-in-out;
 }
 
-.linear-nav-link:hover {
-  color: var(--linear-text-secondary);
+.yw-nav-item:hover, .linear-nav:hover, .linear-nav-link:hover, .ds-nav:hover, .ds-nav-link:hover {
+  color: var(--yw-primary);
 }
 
-/* Glassmorphism utilities */
+.yw-nav-item.active, .linear-nav.active, .linear-nav-link.active, .ds-nav.active, .ds-nav-link.active {
+  color: var(--yw-nav-active);
+  border-bottom: 2px solid var(--yw-nav-active);
+}
+
+/* Youware Design System Glassmorphism utilities */
 .glass-light {
-  background: var(--linear-accent-glass-medium);
-  border: 1px solid var(--linear-accent-border);
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.1);
   backdrop-filter: blur(12px);
 }
 
 .glass-medium {
-  background: var(--linear-accent-glass);
+  background: rgba(255, 255, 255, 0.05);
   border: 1px solid rgba(255, 255, 255, 0.15);
   backdrop-filter: blur(16px);
 }
@@ -290,17 +513,17 @@ body {
   backdrop-filter: blur(20px);
 }
 
-/* Text color utilities */
-.text-secondary {
-  color: var(--linear-text-secondary);
+/* Youware Text color utilities */
+.text-secondary, .ds-text-secondary {
+  color: var(--yw-text-secondary);
 }
 
-.text-white {
-  color: var(--linear-text-white);
+.text-white, .ds-text-white {
+  color: var(--yw-text-white);
 }
 
-.text-primary {
-  color: var(--linear-text-primary);
+.text-primary, .ds-text-primary {
+  color: var(--yw-text-primary);
 }
 
 /* Error styling */
@@ -316,9 +539,11 @@ body {
   color: #f87171;
 }
 
-.linear-nav-link-mobile {
+/*/*
+.yw-nav-link-mobile, .linear-nav-link-mobile, .ds-nav-link-mobile {
   @apply block px-4 py-2 text-sm text-white hover:bg-gray-700;
 }
+*/*/
 
 /* Mobile Optimization Styles */
 
@@ -330,19 +555,19 @@ body {
     letter-spacing: -1.2px;
   }
 
-  .text-h1 {
+  .text-h1, .yw-h1, .ds-h1 {
     font-size: 32px;
     line-height: 38px;
     letter-spacing: -1px;
   }
 
-  .text-h2 {
+  .text-h2, .yw-h2, .ds-h2 {
     font-size: 24px;
     line-height: 30px;
     letter-spacing: -0.5px;
   }
 
-  .text-h3 {
+  .text-h3, .yw-h3, .ds-h3 {
     font-size: 18px;
     line-height: 24px;
     letter-spacing: -0.2px;
@@ -374,6 +599,7 @@ body {
 }
 
 /* Mobile Card Optimizations */
+/*
 .mobile-card {
   @apply bg-gray-800 rounded-lg p-4 mb-4 border border-gray-700;
 }
@@ -390,8 +616,8 @@ body {
 
 /* Mobile Button Optimizations */
 @media (max-width: 640px) {
-  .linear-button-primary,
-  .linear-button-secondary {
+  .ds-button-primary,
+  .ds-button-secondary {
     width: 100%;
     justify-content: center;
     min-height: 44px; /* iOS recommended touch target size */
@@ -409,8 +635,8 @@ body {
 
 /* Mobile Form Optimizations */
 @media (max-width: 640px) {
-  .linear-input,
-  .linear-select {
+  .ds-input,
+  .ds-select {
     min-height: 44px;
     font-size: 16px; /* Prevent zoom on iOS */
     padding: 12px 16px;

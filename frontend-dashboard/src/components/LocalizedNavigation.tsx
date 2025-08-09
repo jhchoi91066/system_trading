@@ -7,8 +7,8 @@ export function LocalizedNavigationLinks({ isMobile = false }: { isMobile?: bool
   const { t } = useTranslation();
   const isClient = useClientOnly();
 
-  const navClasses = isMobile ? "flex flex-col space-y-2 p-4 bg-gray-800" : "flex items-center space-x-6";
-  const linkClasses = isMobile ? "linear-nav-link-mobile" : "linear-nav-link";
+  const navClasses = isMobile ? "flex flex-col space-y-2 p-4 bg-white border-t border-gray-200" : "flex items-center space-x-6";
+  const linkClasses = isMobile ? "block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 font-medium" : "text-gray-800 hover:text-green-600 px-3 py-2 text-sm font-semibold transition-colors border-b-2 border-transparent hover:border-green-600";
 
   if (!isClient) {
     return (
@@ -17,7 +17,7 @@ export function LocalizedNavigationLinks({ isMobile = false }: { isMobile?: bool
         <a href="/strategies" className={linkClasses}>Strategies</a>
         <a href="/backtest" className={linkClasses}>Backtest</a>
         <a href="/trading-history" className={linkClasses}>Trading History</a>
-        <a href="/fund-management" className="linear-nav-link">Fund Management</a>
+        <a href="/fund-management" className={linkClasses}>Fund Management</a>
         <a href="/api-keys" className={linkClasses}>API Keys</a>
         <a href="/monitoring" className={linkClasses}>Monitoring</a>
         <a href="/notifications" className={linkClasses}>Notifications</a>
@@ -67,10 +67,10 @@ export function LocalizedTitle() {
   const isClient = useClientOnly();
 
   if (!isClient) {
-    return <h1 className="text-h3 text-white font-medium">Bitcoin Trading</h1>;
+    return <h1 className="text-xl text-gray-800 font-medium" style={{fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif'}}>Bitcoin Trading</h1>;
   }
   
   return (
-    <h1 className="text-h3 text-white font-medium">{t('dashboard.title')}</h1>
+    <h1 className="text-xl text-gray-800 font-medium" style={{fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif'}}>{t('dashboard.title')}</h1>
   );
 }

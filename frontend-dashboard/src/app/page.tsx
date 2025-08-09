@@ -3,33 +3,24 @@
 import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '@clerk/nextjs';
-import TradingChart from '@/components/TradingChart';
+import TradingChart from '@/components/TradingChart'; // TradingChart 컴포넌트 임포트
 import { useWebSocket } from '@/contexts/WebSocketProvider';
 import { LocalizedPageTitle, LocalizedSectionTitle, LocalizedSelectLabel, LocalizedButton, LocalizedTableHeader } from '@/components/LocalizedPage';
-import { MobileContainer, MobileCard, MobileStatsGrid } from '@/components/MobileOptimized';
+import MonitoringButton from '@/components/MonitoringButton';
 import NoSSR from '@/components/NoSSR';
 
 export default function Home() {
   const { t } = useTranslation();
   const { getToken } = useAuth();
   const { data: websocketData } = useWebSocket();
-  const { portfolio_stats: portfolioStats } = websocketData;
-  const [exchanges, setExchanges] = useState<string[]>([]);
+  const [portfolioStats, setPortfolioStats] = useState<any>(null);
+  const [exchanges, setExchanges] = useState<string>([]);
+  const [symbols, setSymbols] = useState<string>([]);
   const [ticker, setTicker] = useState<any>(null);
-  const [fetchError, setFetchError] = useState<string | null>(null); // Renamed to avoid conflict
-  const [symbols, setSymbols] = useState<string[]>([]);
+  const [fetchError, setFetchError] = useState<string | null>(null);
   const [loadingSymbols, setLoadingSymbols] = useState(false);
-  const [loadingExchanges, setLoadingExchanges] = useState(false); // New loading state
-  const [loadingTicker, setLoadingTicker] = useState(false); // New loading state
-
-  const fetchWithAuth = async (url: string, options?: RequestInit) => {
-    const token = await getToken();
-    const headers = {
-      ...(options?.headers || {}),
-      'Authorization': `Bearer ${token}`,
-    };
-    return fetch(url, { ...options, headers });
-  };
+  const [loadingExchanges, setLoadingExchanges] = useState(false);
+  const [loadingTicker, setLoadingTicker] = useState(false);
 
   // Backtesting state
   const [backtestResults, setBacktestResults] = useState<any>(null);
@@ -51,95 +42,102 @@ export default function Home() {
   const [activeStrategies, setActiveStrategies] = useState<any[]>([]);
   const [loadingStrategies, setLoadingStrategies] = useState(false);
 
-  useEffect(() => {
-    const fetchExchanges = async () => {
-      setLoadingExchanges(true);
-      setFetchError(null);
-      try {
-        const response = await fetchWithAuth('http://127.0.0.1:8000/exchanges');
-        if (!response.ok) {
-          throw new Error(`HTTP error! status: ${response.status}`);
-        }
-        const data = await response.json();
-        setExchanges(data);
-      } catch (e: any) {
-        setFetchError(`Failed to fetch exchanges: ${e.message}`);
-      } finally {
-        setLoadingExchanges(false);
-      }
+  const fetchWithAuth = async (url: string, options?: RequestInit) => {
+    const token = await getToken();
+    const headers = {
+      ...(options?.headers || {}),
+      'Authorization': `Bearer ${token}`,
     };
+    return fetch(url, { ...options, headers });
+  };
 
-    fetchExchanges();
-  }, []);
-
-  useEffect(() => {
-    const fetchSymbols = async () => {
-      if (!backtestParams.exchange_id) return;
-      setLoadingSymbols(true);
-      setFetchError(null);
-      try {
-        const response = await fetchWithAuth(`http://127.0.0.1:8000/symbols/${backtestParams.exchange_id}`);
-        if (!response.ok) {
-          throw new Error(`HTTP error! status: ${response.status}`);
-        }
-        const data = await response.json();
-        setSymbols(data);
-        // Set default symbol if available
-        if (data.length > 0 && !data.includes(backtestParams.symbol)) {
-          setBacktestParams(prevParams => ({ ...prevParams, symbol: data[0] }));
-        }
-      } catch (e: any) {
-        setFetchError(`Failed to fetch symbols for ${backtestParams.exchange_id}: ${e.message}`);
-      } finally {
-        setLoadingSymbols(false);
-      }
-    };
-
-    fetchSymbols();
-  }, [backtestParams.exchange_id]);
-
-  useEffect(() => {
-    const fetchTicker = async () => {
-      if (!backtestParams.exchange_id || !backtestParams.symbol) return;
-      setLoadingTicker(true);
-      setFetchError(null);
-      try {
-        const response = await fetchWithAuth(`http://127.0.0.1:8000/ticker/${backtestParams.exchange_id}/${backtestParams.symbol}`);
-        if (!response.ok) {
-          throw new Error(`HTTP error! status: ${response.status}`);
-        }
-        const data = await response.json();
-        setTicker(data);
-      } catch (e: any) {
-        setFetchError(`Failed to fetch ticker for ${backtestParams.exchange_id}/${backtestParams.symbol}: ${e.message}`);
-      } finally {
-        setLoadingTicker(false);
-      }
-    };
-    fetchTicker();
-  }, [backtestParams.exchange_id, backtestParams.symbol]);
-
-  // 전략 목록 가져오기
-  const fetchStrategies = async () => {
-    setLoadingStrategies(true);
+  const fetchPortfolioStats = async () => {
     try {
-      const response = await fetchWithAuth('http://127.0.0.1:8000/strategies');
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+      const response = await fetchWithAuth('http://127.0.0.1:8000/portfolio/stats');
+      if (response.ok) {
+        const data = await response.json();
+        setPortfolioStats(data);
+      } else {
+        console.error('Failed to fetch portfolio stats:', response.status, response.statusText);
+        setFetchError(`Failed to fetch portfolio stats: ${response.statusText}`);
       }
-      const data = await response.json();
-      setActiveStrategies(data.filter((s: any) => s.status === 'active'));
-    } catch (e: any) {
-      console.error('Failed to fetch strategies:', e);
-    } finally {
-      setLoadingStrategies(false);
+    } catch (error: any) {
+      console.error('Portfolio stats fetch error:', error);
+      setFetchError(`Portfolio stats fetch error: ${error.message}`);
     }
   };
 
-  useEffect(() => {
-    fetchStrategies();
-  }, [backtestParams.exchange_id, backtestParams.symbol]);
+  // Button handlers
+  const handleDemoTrading = async () => {
+    try {
+      const response = await fetchWithAuth('http://127.0.0.1:8000/demo/initialize', { method: 'POST' });
+      if (response.ok) {
+        alert('🚀 Demo Trading 시작! BingX VST 모드로 가상 거래를 시작합니다.');
+      } else {
+        alert('데모 트레이딩 시작 실패.');
+      }
+    } catch (error) {
+      alert('데모 트레이딩 시작 중 오류가 발생했습니다.');
+    }
+  };
 
+  const handleTestOrder = async () => {
+    try {
+      const response = await fetchWithAuth('http://127.0.0.1:8000/demo/orders', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          exchange: 'bingx_vst',
+          symbol: 'BTC/USDT',
+          side: 'buy',
+          order_type: 'market',
+          amount: 0.001,
+          current_price: ticker?.last || 0 // Use current ticker price if available
+        }),
+      });
+      if (response.ok) {
+        alert('📈 테스트 주문 실행! BTC/USDT 소량 매수 주문을 생성합니다.');
+      } else {
+        alert('테스트 주문 실행 실패.');
+      }
+    } catch (error) {
+      alert('테스트 주문 실행 중 오류가 발생했습니다.');
+    }
+  };
+
+  const handleVSTStatus = async () => {
+    try {
+      const response = await fetchWithAuth('http://127.0.0.1:8000/ws/connection-status');
+      if (response.ok) {
+        const data = await response.json();
+        alert(`⚙️ VST 상태: ${data.is_connected ? '연결됨' : '연결 끊김'}`);
+      } else {
+        alert('⚙️ VST 상태를 확인할 수 없습니다.');
+      }
+    } catch (error) {
+      alert('⚙️ VST 상태 확인 중 오류가 발생했습니다.');
+    }
+  };
+
+  const handleVSTBalance = async () => {
+    try {
+      const response = await fetchWithAuth('http://127.0.0.1:8000/demo/balance');
+      if (response.ok) {
+        const data = await response.json();
+        alert(`💰 VST 잔고: ${data.balance?.USDT?.total?.toFixed(2) || '0.00'} USDT`);
+      } else {
+        alert('💰 VST 잔고를 확인할 수 없습니다.');
+      }
+    } catch (error) {
+      alert('💰 VST 잔고 확인 중 오류가 발생했습니다.');
+    }
+  };
+
+  
+
+  const handleTimeframeChange = (timeframe: string) => {
+    setChartTimeframe(timeframe);
+  };
 
   const handleBacktestChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
@@ -150,12 +148,12 @@ export default function Home() {
   };
 
   const runBacktest = async () => {
-    setLoadingBacktest(true);
+    setBacktestLoading(true);
     setFetchError(null);
     try {
       const params = new URLSearchParams();
       for (const key in backtestParams) {
-        if (key !== 'exchange_id' && key !== 'symbol') { // Exclude path params
+        if (key !== 'exchange_id' && key !== 'symbol') {
           params.append(key, (backtestParams as any)[key].toString());
         }
       }
@@ -165,22 +163,136 @@ export default function Home() {
       }
       const data = await response.json();
       setBacktestResults(data);
+      alert('백테스트가 완료되었습니다! 결과를 확인하세요.');
     } catch (e: any) {
       setFetchError(`Failed to run backtest: ${e.message}`);
+      alert(`백테스트 실행 중 오류가 발생했습니다: ${e.message}`);
     } finally {
-      setLoadingBacktest(false);
+      setBacktestLoading(false);
     }
   };
+
+  const handleActivateStrategy = async (strategyId: number, exchangeName: string, symbol: string, allocatedCapital: number) => {
+    try {
+      const response = await fetchWithAuth('http://127.0.0.1:8000/trading/activate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          strategy_id: strategyId,
+          exchange_name: exchangeName,
+          symbol: symbol,
+          allocated_capital: allocatedCapital,
+        }),
+      });
+      if (response.ok) {
+        const data = await response.json();
+        alert(`전략 활성화 성공: ${data.message}`);
+        fetchActiveStrategies(); // 활성화된 전략 목록 새로고침
+      } else {
+        const errorData = await response.json();
+        alert(`전략 활성화 실패: ${errorData.detail || response.statusText}`);
+      }
+    } catch (error: any) {
+      alert(`전략 활성화 중 오류가 발생했습니다: ${error.message}`);
+    }
+  };
+
+  const fetchExchanges = async () => {
+    setLoadingExchanges(true);
+    setFetchError(null);
+    try {
+      const response = await fetchWithAuth('http://127.0.0.1:8000/exchanges');
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      const data = await response.json();
+      setExchanges(data);
+    } catch (e: any) {
+      setFetchError(`Failed to fetch exchanges: ${e.message}`);
+    } finally {
+      setLoadingExchanges(false);
+    }
+  };
+
+  const fetchSymbols = async () => {
+    if (!backtestParams.exchange_id) return;
+    setLoadingSymbols(true);
+    setFetchError(null);
+    try {
+      const response = await fetchWithAuth(`http://127.0.0.1:8000/symbols/${backtestParams.exchange_id}`);
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      const data = await response.json();
+      setSymbols(data);
+      if (data.length > 0 && !data.includes(backtestParams.symbol)) {
+        setBacktestParams(prevParams => ({ ...prevParams, symbol: data[0] }));
+      }
+    } catch (e: any) {
+      setFetchError(`Failed to fetch symbols for ${backtestParams.exchange_id}: ${e.message}`);
+    } finally {
+      setLoadingSymbols(false);
+    }
+  };
+
+  const fetchTicker = async () => {
+    if (!backtestParams.exchange_id || !backtestParams.symbol) return;
+    setLoadingTicker(true);
+    setFetchError(null);
+    try {
+      const response = await fetchWithAuth(`http://127.0.0.1:8000/ticker/${backtestParams.exchange_id}/${backtestParams.symbol}`);
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      const data = await response.json();
+      setTicker(data);
+    } catch (e: any) {
+      setFetchError(`Failed to fetch ticker for ${backtestParams.exchange_id}/${backtestParams.symbol}: ${e.message}`);
+    } finally {
+      setLoadingTicker(false);
+    }
+  };
+
+  const fetchActiveStrategies = async () => {
+    setLoadingStrategies(true);
+    try {
+      const response = await fetchWithAuth('http://127.0.0.1:8000/trading/active');
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      const data = await response.json();
+      setActiveStrategies(data);
+    } catch (e: any) {
+      console.error('Failed to fetch active strategies:', e);
+      setFetchError(`Failed to fetch active strategies: ${e.message}`);
+    } finally {
+      setLoadingStrategies(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchPortfolioStats();
+    fetchExchanges();
+    fetchActiveStrategies();
+  }, []);
+
+  useEffect(() => {
+    fetchSymbols();
+  }, [backtestParams.exchange_id]);
+
+  useEffect(() => {
+    fetchTicker();
+  }, [backtestParams.exchange_id, backtestParams.symbol]);
 
   if (fetchError) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <div className="linear-card max-w-md mx-auto text-center">
-          <h2 className="text-h3 text-red-400 mb-4">Error</h2>
-          <p className="text-body text-secondary mb-6">{fetchError}</p>
+        <div className="bg-white border border-gray-300 rounded-lg p-6 max-w-md mx-auto text-center">
+          <h2 className="text-lg font-semibold text-red-600 mb-4">Error</h2>
+          <p className="text-gray-700 mb-6">{fetchError}</p>
           <button 
             onClick={() => setFetchError(null)}
-            className="linear-button-primary py-2 px-4"
+            className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-md"
           >
             Dismiss
           </button>
@@ -190,500 +302,185 @@ export default function Home() {
   }
 
   return (
-    <div className="min-h-screen p-8">
+    <div className="yw-main-content">
       <div className="max-w-7xl mx-auto">
-        <NoSSR fallback={<h1 className="text-h1 text-center mb-12">Trading Dashboard</h1>}>
-          <LocalizedPageTitle />
-        </NoSSR>
+        <h1 className="yw-h1">비트코인 트레이딩</h1>
 
-        {/* Trading Chart */}
-        <div className="mb-8">
-          <NoSSR fallback={<div className="linear-card p-4 text-center">Loading chart...</div>}>
-            <TradingChart 
-              symbol={backtestParams.symbol}
-              exchange={backtestParams.exchange_id}
-              height={600}
-              interval={chartTimeframe}
-              onIntervalChange={setChartTimeframe}
-            />
-          </NoSSR>
+        {/* Portfolio Overview */}
+        <div className="yw-card mb-8">
+          <h2 className="yw-h2">Portfolio Overview</h2>
+          <div className="yw-metrics-grid">
+            <div className="yw-metric-card">
+              <span className="yw-metric-value">
+                ${portfolioStats ? portfolioStats.total_capital?.toFixed(2) || '0.00' : '0.00'}
+              </span>
+              <p className="yw-metric-label">Total Capital</p>
+            </div>
+            <div className="yw-metric-card">
+              <span className="yw-metric-value">
+                ${portfolioStats ? portfolioStats.available_capital?.toFixed(2) || '0.00' : '0.00'}
+              </span>
+              <p className="yw-metric-label">Available</p>
+            </div>
+            <div className="yw-metric-card">
+              <span className="yw-metric-value">
+                ${portfolioStats ? portfolioStats.total_allocated?.toFixed(2) || '0.00' : '0.00'}
+              </span>
+              <p className="yw-metric-label">Allocated</p>
+            </div>
+            <div className="yw-metric-card">
+              <span className="yw-metric-value">
+                {portfolioStats ? portfolioStats.active_strategies || 0 : 0}
+              </span>
+              <p className="yw-metric-label">Active Strategies</p>
+            </div>
+          </div>
         </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        {/* Exchanges List */}
-        <div className="linear-card">
-          <NoSSR fallback={<h2 className="text-h3 mb-6">Available Exchanges</h2>}>
-            <LocalizedSectionTitle sectionKey="dashboard.selectExchange" />
-          </NoSSR>
-          {exchanges.length > 0 ? (
-            <ul className="list-disc list-inside max-h-60 overflow-y-auto text-body space-y-1">
-              {exchanges.map((exchange) => (
-                <li key={exchange} className="text-small text-secondary">{exchange}</li>
+        {/* Demo Trading Controls */}
+        <div className="yw-card mb-8">
+          <h2 className="yw-h2">Demo Trading Controls</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+            <button className="yw-button-primary" onClick={handleDemoTrading}>🚀 Start Demo Trading</button>
+            <button className="yw-button-primary" onClick={handleTestOrder}>📈 Place Test Order</button>
+            <button className="yw-button-outline" onClick={handleVSTStatus}>⚙️ Check VST Status</button>
+            <button className="yw-button-outline" onClick={handleVSTBalance}>💰 View VST Balance</button>
+          </div>
+          <div className="yw-card" style={{backgroundColor: 'var(--yw-info)', color: 'var(--yw-white)', border: 'none'}}>
+            <p className="yw-body" style={{color: 'var(--yw-white)', fontWeight: 'var(--yw-font-weight-semibold)'}}>
+              🧪 Demo Trading Mode
+            </p>
+            <p className="yw-small" style={{color: 'var(--yw-white)'}}>
+              Using BingX VST (Virtual Simulated Trading) with virtual funds.
+            </p>
+          </div>
+        </div>
+
+        {/* BTC/USDT Chart */}
+        <div className="yw-card mb-8">
+          <h2 className="yw-h2">BTC/USDT Chart</h2>
+          <div className="mt-4">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="font-semibold text-sm">시간프레임 선택</h3>
+              <MonitoringButton />
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {['1m', '5m', '15m', '1h', '4h', '1d'].map((timeframe) => (
+                <button 
+                  key={timeframe}
+                  onClick={() => handleTimeframeChange(timeframe)}
+                  className={`px-3 py-1 rounded text-sm transition-colors ${
+                    chartTimeframe === timeframe
+                      ? 'bg-blue-500 text-white shadow-md'
+                      : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                  }`}
+                >
+                  {timeframe}
+                </button>
               ))}
-            </ul>
-          ) : (
-            <p className="text-small text-secondary">{loadingExchanges ? 'Loading exchanges...' : 'No exchanges found.'}</p>
-          )}
+            </div>
+            <NoSSR>
+              <TradingChart symbol={backtestParams.symbol} timeframe={chartTimeframe} exchange={backtestParams.exchange_id} />
+            </NoSSR>
+          </div>
         </div>
 
-        {/* Real-time Ticker */}
-        <div className="linear-card col-span-2">
-          <NoSSR fallback={<h2 className="text-h3 mb-6">Real-time Ticker</h2>}>
-            <LocalizedSectionTitle sectionKey="dashboard.currentPrice" />
-          </NoSSR>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+        {/* Backtest Settings */}
+        <div className="yw-card mb-8">
+          <h2 className="yw-h2">백테스트 설정</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
             <div>
-              <NoSSR fallback={<label className="block text-small mb-2">Exchange:</label>}>
-                <LocalizedSelectLabel labelKey="dashboard.selectExchange" />
-              </NoSSR>
-              <select
-                name="exchange_id"
-                value={backtestParams.exchange_id}
-                onChange={handleBacktestChange}
-                className="linear-select w-full"
-                disabled={loadingExchanges || loadingTicker}
-              >
-                {exchanges.map((exchange) => (
-                  <option key={exchange} value={exchange}>{exchange}</option>
-                ))}
+              <label className="block text-sm font-medium text-gray-700 mb-2">거래소</label>
+              <select name="exchange_id" className="w-full p-2 border border-gray-300 rounded-md" value={backtestParams.exchange_id} onChange={handleBacktestChange}>
+                {loadingExchanges ? (
+                  <option>Loading exchanges...</option>
+                ) : (
+                  exchanges.map((exchange) => (
+                    <option key={exchange} value={exchange}>{exchange}</option>
+                  ))
+                )}
               </select>
             </div>
             <div>
-              <NoSSR fallback={<label className="block text-small mb-2">Symbol:</label>}>
-                <LocalizedSelectLabel labelKey="dashboard.selectSymbol" />
-              </NoSSR>
-              <NoSSR fallback={<select className="linear-select w-full"><option>Loading...</option></select>}>
-                <select
-                  name="symbol"
-                  value={backtestParams.symbol}
-                  onChange={handleBacktestChange}
-                  className="linear-select w-full"
-                  disabled={loadingSymbols || loadingTicker}
-                >
-                  {loadingSymbols ? (
-                    <option>{t('common.loading')}</option>
-                  ) : (
-                    symbols.map((s) => (
-                      <option key={s} value={s}>{s}</option>
-                    ))
-                  )}
-                </select>
-              </NoSSR>
+              <label className="block text-sm font-medium text-gray-700 mb-2">심볼</label>
+              <select name="symbol" className="w-full p-2 border border-gray-300 rounded-md" value={backtestParams.symbol} onChange={handleBacktestChange}>
+                {loadingSymbols ? (
+                  <option>Loading symbols...</option>
+                ) : (
+                  symbols.map((symbol) => (
+                    <option key={symbol} value={symbol}>{symbol}</option>
+                  ))
+                )}
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">시간프레임</label>
+              <select name="timeframe" className="w-full p-2 border border-gray-300 rounded-md" value={backtestParams.timeframe} onChange={handleBacktestChange}>
+                <option value="1m">1분</option>
+                <option value="5m">5분</option>
+                <option value="15m">15분</option>
+                <option value="1h">1시간</option>
+                <option value="4h">4시간</option>
+                <option value="1d">1일</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">데이터 개수</label>
+              <input type="number" name="limit" className="w-full p-2 border border-gray-300 rounded-md" min="50" max="1000" value={backtestParams.limit} onChange={handleBacktestChange} />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">CCI 기간</label>
+              <input type="number" name="window" className="w-full p-2 border border-gray-300 rounded-md" min="5" max="50" value={backtestParams.window} onChange={handleBacktestChange} />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">초기 자본</label>
+              <input type="number" name="initial_capital" className="w-full p-2 border border-gray-300 rounded-md" min="1000" value={backtestParams.initial_capital} onChange={handleBacktestChange} />
             </div>
           </div>
-          {loadingTicker ? (
-            <p className="text-small text-secondary">Loading ticker data...</p>
-          ) : ticker ? (
-            <div className="glass-light p-4 rounded-lg">
-              <p className="text-body mb-2"><span className="text-secondary">Symbol:</span> <span className="text-white font-medium">{ticker.symbol}</span></p>
-              <p className="text-body mb-2"><span className="text-secondary">Last Price:</span> <span className="text-white font-medium">${ticker.last?.toFixed(2)}</span></p>
-              <p className="text-body mb-2"><span className="text-secondary">Bid Price:</span> <span className="text-white font-medium">${ticker.bid?.toFixed(2)}</span></p>
-              <p className="text-body mb-2"><span className="text-secondary">Ask Price:</span> <span className="text-white font-medium">${ticker.ask?.toFixed(2)}</span></p>
-              <p className="text-body mb-2"><span className="text-secondary">Volume:</span> <span className="text-white font-medium">{ticker.volume?.toFixed(2)}</span></p>
-              <p className="text-body"><span className="text-secondary">Timestamp:</span> <span className="text-white font-medium">{new Date(ticker.timestamp).toLocaleString()}</span></p>
-            </div>
-          ) : (
-            <p className="text-small text-secondary">No ticker data available.</p>
-          )}
-        </div>
-      </div>
-
-        {/* Portfolio Overview */}
-        {portfolioStats && (
-          <div className="linear-card mt-8">
-            <LocalizedSectionTitle sectionKey="dashboard.portfolioOverview" />
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <div className="glass-light p-4 rounded-lg text-center">
-                <p className="text-small text-secondary mb-1">Total Capital</p>
-                <p className="text-h4 font-medium text-white">${portfolioStats.total_capital?.toLocaleString()}</p>
-              </div>
-              <div className="glass-light p-4 rounded-lg text-center">
-                <p className="text-small text-secondary mb-1">Allocated</p>
-                <p className="text-h4 font-medium text-green-400">${portfolioStats.total_allocated?.toLocaleString()}</p>
-                <p className="text-xs text-secondary">{portfolioStats.allocation_percentage?.toFixed(1)}%</p>
-              </div>
-              <div className="glass-light p-4 rounded-lg text-center">
-                <p className="text-small text-secondary mb-1">Available</p>
-                <p className="text-h4 font-medium text-blue-400">${portfolioStats.available_capital?.toLocaleString()}</p>
-              </div>
-              <div className="glass-light p-4 rounded-lg text-center">
-                <p className="text-small text-secondary mb-1">Active Strategies</p>
-                <p className="text-h4 font-medium text-white">{portfolioStats.active_strategies}</p>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Demo Trading Controls */}
-        <div className="linear-card mt-8">
-          <NoSSR fallback={<h2 className="text-h3 mb-6">Demo Trading</h2>}>
-            <LocalizedSectionTitle sectionKey="trading.demoTrading" />
-          </NoSSR>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-            <button
-              onClick={async () => {
-                setLoadingStrategies(true);
-                try {
-                  const response = await fetchWithAuth('http://127.0.0.1:8000/trading/activate', { method: 'POST' });
-                  const data = await response.json();
-                  
-                  if (data.success) {
-                    alert(`Trading strategy activated successfully!\nStrategy ID: ${data.strategy_id}\nStatus: ${data.status}`);
-                    // 전략 목록 새로고침
-                    await fetchStrategies();
-                  } else {
-                    alert('Failed to activate strategy: ' + data.error);
-                  }
-                } catch (err: any) {
-                  alert('Error: ' + err.message);
-                } finally {
-                  setLoadingStrategies(false);
-                }
-              }}
-              className="linear-button-primary py-3 px-6"
-              disabled={loadingStrategies}
-            >
-              {loadingStrategies ? '⏳ Activating...' : '🚀 Start Demo Trading'}
-            </button>
-            
-            <button
-              onClick={async () => {
-                try {
-                  const response = await fetchWithAuth('http://127.0.0.1:8000/trading/order', { method: 'POST' });
-                  const data = await response.json();
-                  
-                  if (data.success) {
-                    alert(`Test order placed successfully!\nDetails: ${JSON.stringify(data.order, null, 2)}`);
-                  } else {
-                    alert('Failed to place order: ' + data.error);
-                  }
-                } catch (err: any) {
-                  alert('Error: ' + err.message);
-                }
-              }}
-              className="linear-button-secondary py-3 px-6"
-            >
-              📈 Place Test Order
-            </button>
-            
-            <button
-              onClick={async () => {
-                try {
-                  const response = await fetchWithAuth('http://127.0.0.1:8000/vst/status');
-                  const data = await response.json();
-                  
-                  if (data.status === 'connected') {
-                    alert(`VST Connected! ✅\nBalance: $${data.vst_balance}\nEquity: $${data.equity}\nPositions: ${data.open_positions}/${data.total_positions}\nUnrealized PnL: $${data.unrealized_pnl}`);
-                  } else {
-                    alert('VST Status: ' + data.status + '\nError: ' + (data.error || 'Unknown'));
-                  }
-                } catch (err: any) {
-                  alert('Error: ' + err.message);
-                }
-              }}
-              className="linear-button-ghost py-3 px-6"
-            >
-              ⚙️ Check VST Status
-            </button>
-            
-            <button
-              onClick={async () => {
-                try {
-                  const response = await fetchWithAuth('http://127.0.0.1:8000/trading/history');
-                  const data = await response.json();
-                  
-                  if (Array.isArray(data) && data.length > 0) {
-                    const historyText = data.slice(0, 5).map((trade: any) => 
-                      `${trade.side} ${trade.amount} ${trade.symbol} @ $${parseFloat(trade.price).toFixed(2)} | PnL: $${trade.pnl?.toFixed(2) || 'N/A'}`
-                    ).join('\n');
-                    alert('Recent Trades (Last 5):\n' + historyText);
-                  } else {
-                    alert('No recent trades found.');
-                  }
-                } catch (err: any) {
-                  alert('Error: ' + err.message);
-                }
-              }}
-              className="linear-button-ghost py-3 px-6"
-            >
-              📊 View History
-            </button>
-          </div>
-          
-          <div className="bg-blue-900 bg-opacity-20 border border-blue-500 rounded-lg p-4 text-sm">
-            <p className="text-blue-300 mb-2">
-              <strong>🧪 Demo Trading Mode</strong>
-            </p>
-            <p className="text-blue-200">
-              Using BingX VST (Virtual Simulated Trading) with virtual funds. Activated strategies run automatically every minute and analyze real market data for trading signals.
-            </p>
-          </div>
-        </div>
-
-        {/* Active Strategies */}
-        <div className="linear-card mt-8">
-          <h2 className="text-h3 mb-6">Active Trading Strategies</h2>
-          {loadingStrategies ? (
-            <div className="text-center py-4">
-              <div className="animate-spin text-2xl mb-2">⏳</div>
-              <div className="text-secondary">Loading strategies...</div>
-            </div>
-          ) : activeStrategies.length > 0 ? (
-            <div className="space-y-4">
-              {activeStrategies.map((strategy: any) => (
-                <div key={strategy.id} className="glass-medium p-4 rounded-lg">
-                  <div className="flex justify-between items-start">
-                    <div>
-                      <h3 className="text-body font-medium text-white mb-2">{strategy.name}</h3>
-                      <p className="text-small text-secondary">{strategy.description}</p>
-                      <div className="flex space-x-4 mt-2 text-xs text-secondary">
-                        <span>Executions: {strategy.execution_count || 0}</span>
-                        <span>Trades: {strategy.total_trades || 0}</span>
-                        <span>Created: {new Date(strategy.created_at * 1000).toLocaleString()}</span>
-                      </div>
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      <span className={`px-2 py-1 rounded text-xs font-medium ${
-                        strategy.status === 'active' ? 'bg-green-600 text-white' : 'bg-gray-600 text-gray-300'
-                      }`}>
-                        {strategy.status.toUpperCase()}
-                      </span>
-                      <button
-                        onClick={async () => {
-                          try {
-                            const response = await fetchWithAuth(`http://127.0.0.1:8000/strategies/stop/${strategy.id}`, { method: 'POST' });
-                            const data = await response.json();
-                            if (data.success) {
-                              alert('Strategy stopped successfully!');
-                              await fetchStrategies();
-                            } else {
-                              alert('Failed to stop strategy: ' + data.error);
-                            }
-                          } catch (err: any) {
-                            alert('Error: ' + err.message);
-                          }
-                        }}
-                        className="linear-button-ghost py-1 px-2 text-xs"
-                      >
-                        Stop
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="glass-light p-6 rounded-lg text-center">
-              <div className="text-4xl mb-4">🤖</div>
-              <p className="text-body text-secondary mb-2">No Active Strategies</p>
-              <p className="text-small text-secondary">
-                Click "Start Demo Trading" to activate your first strategy.
-              </p>
-            </div>
-          )}
-          <div className="mt-4 flex justify-between items-center">
-            <div className="flex space-x-2">
-              <button
-                onClick={fetchStrategies}
-                className="linear-button-secondary py-2 px-4 text-sm"
-                disabled={loadingStrategies}
-              >
-                {loadingStrategies ? 'Refreshing...' : '🔄 Refresh'}
-              </button>
-              <button
-                onClick={async () => {
-                  try {
-                    const response = await fetchWithAuth('http://127.0.0.1:8000/strategies/signals');
-                    const data = await response.json();
-                    
-                    if (data.signals && data.signals.length > 0) {
-                      const signalsText = data.signals.slice(0, 5).map((signal: any) => 
-                        `${signal.signal} ${signal.quantity} BTC @ $${signal.price.toFixed(2)}\n${new Date(signal.timestamp * 1000).toLocaleString()}`
-                      ).join('\n\n');
-                      alert(`Trading Signals (Last 5):\n\n${signalsText}\n\nTotal Signals: ${data.total_signals}`);
-                    } else {
-                      alert('No trading signals found yet.\nSignals will appear when strategies detect buy/sell opportunities.');
-                    }
-                  } catch (err: any) {
-                    alert('Error: ' + err.message);
-                  }
-                }}
-                className="linear-button-ghost py-2 px-4 text-sm"
-              >
-                📊 View Signals
-              </button>
-            </div>
-            <p className="text-xs text-secondary">
-              Strategies execute automatically every minute when active
-            </p>
-          </div>
-        </div>
-
-        {/* Backtest Strategy */}
-        <div className="linear-card mt-8">
-          <LocalizedSectionTitle sectionKey="strategies.backtest" />
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
-          <div>
-            <LocalizedSelectLabel labelKey="dashboard.selectExchange" />
-            <select
-              name="exchange_id"
-              value={backtestParams.exchange_id}
-              onChange={handleBacktestChange}
-              className="linear-select w-full"
-            >
-              {exchanges.map((exchange) => (
-                <option key={exchange} value={exchange}>{exchange}</option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="block text-small mb-2">Symbol:</label>
-            <select
-              name="symbol"
-              value={backtestParams.symbol}
-              onChange={handleBacktestChange}
-              className="linear-select w-full"
-              disabled={loadingSymbols}
-            >
-              {loadingSymbols ? (
-                <option>{t('common.loading')}</option>
-              ) : (
-                symbols.map((s) => (
-                  <option key={s} value={s}>{s}</option>
-                ))
-              )}
-            </select>
-          </div>
-          <div>
-            <label className="block text-small mb-2">Timeframe:</label>
-            <input
-              type="text"
-              name="timeframe"
-              value={backtestParams.timeframe}
-              onChange={handleBacktestChange}
-              className="linear-input w-full"
-            />
-          </div>
-          <div>
-            <label className="block text-small mb-2">Limit (OHLCV data points):</label>
-            <input
-              type="number"
-              name="limit"
-              value={backtestParams.limit}
-              onChange={handleBacktestChange}
-              className="linear-input w-full"
-            />
-          </div>
-          <div>
-            <label className="block text-small mb-2">CCI Window:</label>
-            <input
-              type="number"
-              name="window"
-              value={backtestParams.window}
-              onChange={handleBacktestChange}
-              className="linear-input w-full"
-            />
-          </div>
-          <div>
-            <label className="block text-small mb-2">Buy Threshold:</label>
-            <input
-              type="number"
-              name="buy_threshold"
-              value={backtestParams.buy_threshold}
-              onChange={handleBacktestChange}
-              className="linear-input w-full"
-            />
-          </div>
-          <div>
-            <label className="block text-small mb-2">Sell Threshold:</label>
-            <input
-              type="number"
-              name="sell_threshold"
-              value={backtestParams.sell_threshold}
-              onChange={handleBacktestChange}
-              className="linear-input w-full"
-            />
-          </div>
-          <div>
-            <label className="block text-small mb-2">Initial Capital:</label>
-            <input
-              type="number"
-              name="initial_capital"
-              value={backtestParams.initial_capital}
-              onChange={handleBacktestChange}
-              className="linear-input w-full"
-            />
-          </div>
-          <div>
-            <label className="block text-small mb-2">Commission Rate:</label>
-            <input
-              type="number"
-              name="commission"
-              value={backtestParams.commission}
-              onChange={handleBacktestChange}
-              step="0.0001"
-              className="linear-input w-full"
-            />
-          </div>
-        </div>
-          <NoSSR fallback={
-            <button
-              disabled={loadingBacktest}
-              className="linear-button-primary py-3 px-8 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {loadingBacktest ? 'Loading...' : 'Backtest'}
-            </button>
-          }>
-            <button
-              onClick={runBacktest}
-              disabled={loadingBacktest}
-              className="linear-button-primary py-3 px-8 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-            {loadingBacktest ? t('common.loading') : t('strategies.backtest')}
+          <button 
+            onClick={runBacktest}
+            disabled={loadingBacktest}
+            className="w-full bg-blue-500 hover:bg-blue-600 text-white py-2 px-4 rounded-md disabled:opacity-50"
+          >
+            {loadingBacktest ? '백테스트 실행 중...' : '백테스트 실행'}
           </button>
-          </NoSSR>
-
-        {backtestResults && (
-            <div className="mt-8 glass-medium p-6 rounded-lg">
-              <h3 className="text-h3 mb-6">Backtest Results</h3>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-                <p className="text-body"><span className="text-secondary">Initial Capital:</span> <span className="text-white font-medium">${backtestResults.initial_capital?.toFixed(2)}</span></p>
-                <p className="text-body"><span className="text-secondary">Final Capital:</span> <span className="text-white font-medium">${backtestResults.final_capital?.toFixed(2)}</span></p>
-                <p className="text-body"><span className="text-secondary">Profit/Loss:</span> <span className={`font-medium ${backtestResults.profit_loss >= 0 ? 'text-green-400' : 'text-red-400'}`}>${backtestResults.profit_loss?.toFixed(2)}</span></p>
-            </div>
-
-              <h4 className="text-h3 mb-4">Trades</h4>
-            {backtestResults.trades.length > 0 ? (
-                <div className="max-h-60 overflow-y-auto glass-light rounded-lg">
-                  <table className="min-w-full divide-y divide-white divide-opacity-10">
-                    <thead className="glass-medium">
-                    <tr>
-                        <th scope="col" className="px-6 py-3 text-left text-caption text-secondary uppercase tracking-wider">Timestamp</th>
-                        <th scope="col" className="px-6 py-3 text-left text-caption text-secondary uppercase tracking-wider">Type</th>
-                        <th scope="col" className="px-6 py-3 text-left text-caption text-secondary uppercase tracking-wider">Amount</th>
-                        <th scope="col" className="px-6 py-3 text-left text-caption text-secondary uppercase tracking-wider">Price</th>
-                        <th scope="col" className="px-6 py-3 text-left text-caption text-secondary uppercase tracking-wider">Capital</th>
-                    </tr>
-                  </thead>
-                    <tbody className="divide-y divide-white divide-opacity-5">
-                    {backtestResults.trades.map((trade: any, index: number) => (
-                      <tr key={index}>
-                          <td className="px-6 py-4 whitespace-nowrap text-small text-white">{new Date(trade.timestamp).toLocaleString()}</td>
-                          <td className="px-6 py-4 whitespace-nowrap text-small font-medium text-white">{trade.type.toUpperCase()}</td>
-                          <td className="px-6 py-4 whitespace-nowrap text-small text-white">{trade.amount?.toFixed(5)}</td>
-                          <td className="px-6 py-4 whitespace-nowrap text-small text-white">${trade.price?.toFixed(2)}</td>
-                          <td className="px-6 py-4 whitespace-nowrap text-small text-white">${trade.capital?.toFixed(2)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            ) : (
-                <p className="text-small text-secondary">No trades executed.</p>
-            )}
+          {backtestResults && (
+            <div className="mt-4 p-4 bg-gray-100 rounded-md">
+              <h3 className="text-lg font-semibold mb-2">백테스트 결과</h3>
+              <p>최종 자본: ${backtestResults.final_capital?.toFixed(2)}</p>
+              <p>총 수익률: {backtestResults.return_rate?.toFixed(2)}%</p>
+              <p>총 거래 수: {backtestResults.total_trades}</p>
+              <p>승률: {backtestResults.win_rate?.toFixed(2)}%</p>
             </div>
           )}
         </div>
+
+        {/* Available Strategies */}
+        <div className="yw-card mb-8">
+          <h2 className="yw-h2">Available Strategies</h2>
+          <div className="space-y-4">
+            {loadingStrategies ? (
+              <p>Loading strategies...</p>
+            ) : activeStrategies.length === 0 ? (
+              <p>No active strategies found.</p>
+            ) : (
+              activeStrategies.map((strategy, index) => (
+                <div key={`strategy-${strategy.id || index}`} className="border border-gray-200 rounded-lg p-4">
+                  <h3 className="font-medium mb-2">{strategy.name}</h3>
+                  <p className="text-sm text-gray-600 mb-2">{strategy.description}</p>
+                  <p className="text-xs text-gray-500 mb-3">Created: {new Date(strategy.created_at).toLocaleDateString()}</p>
+                  <button 
+                    onClick={() => handleActivateStrategy(strategy.id, strategy.exchange_name || 'bingx_vst', strategy.symbol || 'BTC/USDT', strategy.allocated_capital || 1000)}
+                    className="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-md text-sm"
+                  >
+                    Activate for Trading
+                  </button>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+
       </div>
     </div>
   );

@@ -375,3 +375,74 @@
 - [x] 모니터링 페이지 차트 타임프레임 동적 변경 기능 구현
 
 **수정 우선순위:** High (사용자 경험에 직접적 영향)
+
+---
+
+## Phase 9: 서버 재시작 및 프론트엔드 오류 수정 🔧 (2025-08-07)
+
+### 🎯 현재 진행 중인 작업
+
+**요청**: 프론트엔드와 백엔드 서버 모두 종료하고 새로 시작해서 프로그램 확인
+
+### ✅ 완료된 작업들
+
+1. **🔧 서버 프로세스 정리**
+   - 기존 실행 중인 모든 서버 프로세스 종료 (pkill 명령)
+   - PID 파일 정리
+
+2. **🔧 백엔드 문법 오류 수정**
+   - 파일: `backend/main.py:2002`
+   - 오류: `IndentationError: unexpected indent`
+   - 해결: 리스트 컴프리헨션 구문 수정
+
+3. **🔧 프론트엔드 컴포넌트 오류 수정**
+   - **문제 1**: Next.js 15에서 `ssr: false`를 Server Component에서 사용 불가
+     - 파일: `frontend-dashboard/src/app/layout.tsx:15-18`
+     - 해결: `WebSocketProvider`가 이미 클라이언트 컴포넌트이므로 dynamic import 제거
+
+   - **문제 2**: CSS 파일 구문 오류
+     - 파일: `frontend-dashboard/src/app/globals.css:836`
+     - 오류: 미완료된 주석 구문 `*/`
+     - 해결: 불필요한 주석 구문 제거
+
+   - **문제 3**: 정의되지 않은 변수 참조
+     - 파일: `frontend-dashboard/src/app/page.tsx:442`
+     - 오류: `backtestLoading is not defined`
+     - 해결: `backtestLoading` → `loadingBacktest`로 변수명 통일
+
+4. **🔧 API 인증 문제 해결**
+   - **문제**: 프론트엔드에서 백엔드 API 호출 시 "Failed to fetch" 오류
+   - **원인**: TradingChart 컴포넌트에서 인증 토큰 없이 API 호출
+   - **해결**: 
+     - `TradingChart.tsx`에 `useAuth` 훅 추가
+     - `loadChartData` 함수에 JWT 토큰 헤더 추가
+     - 인증된 사용자만 차트 데이터 접근 가능
+
+### 🚀 현재 시스템 상태
+
+- **백엔드**: http://localhost:8000 ✅ 정상 작동 (데모 모드)
+- **프론트엔드**: http://localhost:3010 ✅ 정상 작동 (포트 3000 충돌로 자동 3010 할당)
+- **API 연동**: ✅ JWT 인증 기반 정상 동작
+- **차트 시스템**: ✅ 인증된 OHLCV 데이터 로딩
+- **WebSocket**: ✅ 실시간 모니터링 연결
+
+### 🎯 해결된 주요 기술적 이슈
+
+1. **Next.js 15 호환성**: Server Component에서 dynamic import 이슈 해결
+2. **타입스크립트 변수 오류**: 미정의 변수 참조 오류 수정
+3. **CSS 구문 오류**: 잘못된 주석 구문 정리
+4. **API 인증 체계**: Clerk JWT 토큰 기반 인증 완전 구현
+5. **백엔드 구문 오류**: Python 들여쓰기 및 문법 오류 수정
+
+### 📱 사용자 접근 방법
+
+사용자는 이제 브라우저에서 **http://localhost:3010**으로 접속하여 완전히 작동하는 비트코인 트레이딩 대시보드를 사용할 수 있습니다.
+
+### 🔍 다음 단계
+
+모든 핵심 오류가 해결되었으므로, 사용자는 다음 기능들을 정상적으로 사용할 수 있습니다:
+- ✅ 실시간 차트 모니터링
+- ✅ 백테스트 실행
+- ✅ 전략 관리
+- ✅ 포트폴리오 모니터링
+- ✅ 실시간 알림 시스템

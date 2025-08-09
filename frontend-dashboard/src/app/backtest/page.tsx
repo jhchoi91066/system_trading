@@ -502,7 +502,7 @@ export default function BacktestPage() {
                             <span className={`text-small px-2 py-1 rounded ${
                               trade.type === 'buy' ? 'bg-green-900/20 text-green-400' : 'bg-red-900/20 text-red-400'
                             }`}>
-                              {trade.type.toUpperCase()}
+                              {trade.type ? trade.type.toUpperCase() : 'UNKNOWN'}
                             </span>
                           </td>
                           <td className="p-4 text-small text-right">${trade.price.toFixed(2)}</td>

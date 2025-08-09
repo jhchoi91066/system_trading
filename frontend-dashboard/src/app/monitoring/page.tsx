@@ -214,30 +214,30 @@ export default function MonitoringPage() {
                       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                         <div className="text-center">
                           <p className="text-small text-secondary mb-1">Total Trades</p>
-                          <p className="text-body font-medium text-white">{performance.total_trades}</p>
+                          <p className="text-body font-medium text-white">{performance.total_trades ?? 'N/A'}</p>
                         </div>
                         <div className="text-center">
                           <p className="text-small text-secondary mb-1">Winning Trades</p>
-                          <p className="text-body font-medium text-green-400">{performance.winning_trades}</p>
+                          <p className="text-body font-medium text-green-400">{performance.winning_trades ?? 'N/A'}</p>
                         </div>
                         <div className="text-center">
                           <p className="text-small text-secondary mb-1">Win Rate</p>
                           <p className={`text-body font-medium ${
-                            performance.win_rate >= 50 ? 'text-green-400' : 'text-red-400'
+                            (performance.win_rate ?? 0) >= 50 ? 'text-green-400' : 'text-red-400'
                           }`}>
-                            {performance.win_rate.toFixed(1)}%
+                            {(performance.win_rate ?? 0).toFixed(1)}%
                           </p>
                         </div>
                         <div className="text-center">
                           <p className="text-small text-secondary mb-1">Risk Settings</p>
                           <p className="text-small text-secondary">
-                            SL: {strategy.stop_loss_percentage}% | TP: {strategy.take_profit_percentage}%
+                            SL: {strategy.stop_loss_percentage ?? 'N/A'}% | TP: {strategy.take_profit_percentage ?? 'N/A'}%
                           </p>
                         </div>
                       </div>
                     ) : (
                       <div className="text-center py-4">
-                        <p className="text-small text-secondary">Loading performance data...</p>
+                        <p className="text-small text-secondary">Awaiting performance data...</p>
                       </div>
                     )}
                     

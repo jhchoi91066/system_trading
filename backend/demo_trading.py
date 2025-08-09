@@ -611,7 +611,7 @@ demo_simulator = DemoTradingSimulator()
 def is_demo_mode_enabled(user_id: str) -> bool:
     """사용자의 데모 모드 활성화 여부 확인"""
     # 실제로는 데이터베이스에서 사용자 설정을 확인
-    return True  # 임시로 항상 True 반환
+    return False  # 임시로 항상 False 반환
 
 def switch_trading_mode(user_id: str, demo_mode: bool) -> bool:
     """트레이딩 모드 전환"""

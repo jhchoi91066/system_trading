@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { createChart, IChartApi, ISeriesApi, CandlestickData, ColorType, UTCTimestamp } from 'lightweight-charts';
+import { useAuth } from '@clerk/nextjs';
 
 interface TradingChartProps {
   symbol?: string;
@@ -27,6 +28,7 @@ export default function TradingChart({
   interval = '1h',
   onIntervalChange
 }: TradingChartProps) {
+  const { getToken } = useAuth();
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const seriesRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
@@ -212,9 +214,16 @@ export default function TradingChart({
       setLoading(true);
       setError(null);
 
+      const token = await getToken();
+      const headers: HeadersInit = {};
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+
       // Fetch OHLCV data from backend
       const response = await fetch(
-        `http://127.0.0.1:8000/ohlcv/${exchange}/${encodeURIComponent(symbol)}?timeframe=${interval}&limit=200`
+        `http://127.0.0.1:8000/ohlcv/${exchange}/${encodeURIComponent(symbol)}?timeframe=${interval}&limit=200`,
+        { headers }
       );
 
       if (!response.ok) {

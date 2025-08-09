@@ -1,0 +1,82 @@
+
+import type { Config } from 'tailwindcss'
+
+const config: Config = {
+  content: [
+    './src/pages/**/*.{js,ts,jsx,tsx,mdx}',
+    './src/components/**/*.{js,ts,jsx,tsx,mdx}',
+    './src/app/**/*.{js,ts,jsx,tsx,mdx}',
+  ],
+  theme: {
+    extend: {
+      colors: {
+        primary: '#28a745',
+        primary_hover: '#218838',
+        success: '#28a745',
+        danger: '#dc3545',
+        warning: '#ffc107',
+        info: '#17a2b8',
+        light: '#f8f9fa',
+        dark: '#343a40',
+        white: '#ffffff',
+        gray_100: '#f8f9fa',
+        gray_200: '#e9ecef',
+        gray_300: '#dee2e6',
+        gray_400: '#ced4da',
+        gray_500: '#adb5bd',
+        gray_600: '#6c757d',
+        gray_700: '#495057',
+        gray_800: '#343a40',
+        gray_900: '#212529',
+        background_main: '#f8f9fa',
+        background_card: '#ffffff',
+        text_primary: '#212529',
+        text_secondary: '#6c757d',
+        text_muted: '#6c757d',
+        border_color: '#dee2e6',
+        positive_green: '#28a745',
+        negative_red: '#dc3545',
+        price_positive: '#28a745',
+        price_negative: '#dc3545',
+        nav_active: '#28a745',
+        nav_text: '#ffffff',
+        nav_background: '#343a40',
+      },
+      fontFamily: {
+        sans: ['-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'Helvetica Neue', 'Arial', 'sans-serif'],
+      },
+      fontSize: {
+        base: '14px',
+        sm: '12px',
+        lg: '16px',
+        h1: '36px',
+        h2: '28px',
+        h3: '20px',
+        h4: '16px',
+      },
+      spacing: {
+        xs: '4px',
+        sm: '8px',
+        md: '12px',
+        lg: '16px',
+        xl: '24px',
+        xxl: '32px',
+        xxxl: '48px',
+      },
+      borderRadius: {
+        sm: '4px',
+        md: '6px',
+        lg: '8px',
+        xl: '12px',
+      },
+      boxShadow: {
+        sm: '0 1px 2px 0 rgba(0, 0, 0, 0.05)',
+        md: '0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06)',
+        lg: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)',
+        xl: '0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)',
+      },
+    },
+  },
+  plugins: [],
+}
+export default config

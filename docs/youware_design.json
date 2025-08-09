@@ -1,0 +1,701 @@
+{
+  "application": {
+    "name": "Bitcoin Trading Dashboard",
+    "description": "Complete cryptocurrency trading dashboard with accurate styling from captured screens",
+    "design_system": {
+      "colors": {
+        "primary": "#28a745",
+        "primary_hover": "#218838",
+        "success": "#28a745",
+        "danger": "#dc3545",
+        "warning": "#ffc107",
+        "info": "#17a2b8",
+        "light": "#f8f9fa",
+        "dark": "#343a40",
+        "white": "#ffffff",
+        "gray_100": "#f8f9fa",
+        "gray_200": "#e9ecef",
+        "gray_300": "#dee2e6",
+        "gray_400": "#ced4da",
+        "gray_500": "#adb5bd",
+        "gray_600": "#6c757d",
+        "gray_700": "#495057",
+        "gray_800": "#343a40",
+        "gray_900": "#212529",
+        "background_main": "#f8f9fa",
+        "background_card": "#ffffff",
+        "text_primary": "#212529",
+        "text_secondary": "#6c757d",
+        "text_muted": "#6c757d",
+        "border_color": "#dee2e6",
+        "positive_green": "#28a745",
+        "negative_red": "#dc3545",
+        "price_positive": "#28a745",
+        "price_negative": "#dc3545",
+        "nav_active": "#28a745",
+        "nav_text": "#ffffff",
+        "nav_background": "#343a40"
+      },
+      "typography": {
+        "font_family": "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif",
+        "font_size_base": "14px",
+        "font_size_sm": "12px",
+        "font_size_lg": "16px",
+        "font_weight_normal": "400",
+        "font_weight_medium": "500",
+        "font_weight_semibold": "600",
+        "font_weight_bold": "700",
+        "line_height_base": "1.5",
+        "heading_sizes": {
+          "h1": {
+            "font_size": "36px",
+            "font_weight": "700",
+            "line_height": "1.2",
+            "margin_bottom": "24px"
+          },
+          "h2": {
+            "font_size": "28px",
+            "font_weight": "600",
+            "line_height": "1.3",
+            "margin_bottom": "20px"
+          },
+          "h3": {
+            "font_size": "20px",
+            "font_weight": "600",
+            "line_height": "1.4",
+            "margin_bottom": "16px"
+          },
+          "h4": {
+            "font_size": "16px",
+            "font_weight": "600",
+            "line_height": "1.4",
+            "margin_bottom": "12px"
+          }
+        }
+      },
+      "spacing": {
+        "xs": "4px",
+        "sm": "8px",
+        "md": "12px",
+        "lg": "16px",
+        "xl": "24px",
+        "xxl": "32px",
+        "xxxl": "48px"
+      },
+      "border_radius": {
+        "sm": "4px",
+        "md": "6px",
+        "lg": "8px",
+        "xl": "12px"
+      },
+      "shadows": {
+        "sm": "0 1px 2px 0 rgba(0, 0, 0, 0.05)",
+        "md": "0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06)",
+        "lg": "0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)",
+        "xl": "0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)"
+      }
+    },
+    "layout": {
+      "header": {
+        "height": "60px",
+        "background_color": "#343a40",
+        "padding": "0 24px",
+        "border_bottom": "1px solid #dee2e6",
+        "display": "flex",
+        "align_items": "center",
+        "justify_content": "space-between"
+      },
+      "navigation": {
+        "height": "50px",
+        "background_color": "#ffffff",
+        "border_bottom": "1px solid #dee2e6",
+        "padding": "0 24px",
+        "display": "flex",
+        "align_items": "center",
+        "gap": "32px"
+      },
+      "main_content": {
+        "padding": "24px",
+        "background_color": "#f8f9fa",
+        "min_height": "calc(100vh - 110px)"
+      },
+      "grid": {
+        "gap": "24px",
+        "columns": "repeat(auto-fit, minmax(300px, 1fr))"
+      }
+    },
+    "components": {
+      "buttons": {
+        "primary": {
+          "background_color": "#28a745",
+          "color": "#ffffff",
+          "border": "1px solid #28a745",
+          "border_radius": "6px",
+          "padding": "8px 16px",
+          "font_size": "14px",
+          "font_weight": "500",
+          "cursor": "pointer",
+          "transition": "all 0.2s ease-in-out",
+          "hover": {
+            "background_color": "#218838",
+            "border_color": "#1e7e34"
+          }
+        },
+        "danger": {
+          "background_color": "#dc3545",
+          "color": "#ffffff",
+          "border": "1px solid #dc3545",
+          "border_radius": "6px",
+          "padding": "8px 16px",
+          "font_size": "14px",
+          "font_weight": "500",
+          "cursor": "pointer",
+          "transition": "all 0.2s ease-in-out",
+          "hover": {
+            "background_color": "#c82333",
+            "border_color": "#bd2130"
+          }
+        },
+        "outline": {
+          "background_color": "transparent",
+          "color": "#6c757d",
+          "border": "1px solid #dee2e6",
+          "border_radius": "6px",
+          "padding": "8px 16px",
+          "font_size": "14px",
+          "font_weight": "500",
+          "cursor": "pointer",
+          "transition": "all 0.2s ease-in-out",
+          "hover": {
+            "background_color": "#f8f9fa",
+            "border_color": "#adb5bd"
+          }
+        },
+        "timeframe": {
+          "background_color": "#f8f9fa",
+          "color": "#6c757d",
+          "border": "1px solid #dee2e6",
+          "border_radius": "4px",
+          "padding": "6px 12px",
+          "font_size": "12px",
+          "font_weight": "500",
+          "cursor": "pointer",
+          "transition": "all 0.2s ease-in-out",
+          "active": {
+            "background_color": "#28a745",
+            "color": "#ffffff",
+            "border_color": "#28a745"
+          }
+        }
+      },
+      "cards": {
+        "default": {
+          "background_color": "#ffffff",
+          "border": "1px solid #dee2e6",
+          "border_radius": "8px",
+          "padding": "20px",
+          "box_shadow": "0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06)"
+        },
+        "chart": {
+          "background_color": "#ffffff",
+          "border": "1px solid #dee2e6",
+          "border_radius": "8px",
+          "padding": "20px",
+          "box_shadow": "0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06)",
+          "height": "400px"
+        }
+      },
+      "tables": {
+        "default": {
+          "width": "100%",
+          "border_collapse": "collapse",
+          "background_color": "#ffffff"
+        },
+        "header": {
+          "background_color": "#f8f9fa",
+          "color": "#495057",
+          "font_weight": "600",
+          "font_size": "12px",
+          "text_transform": "uppercase",
+          "padding": "12px",
+          "border_bottom": "1px solid #dee2e6"
+        },
+        "cell": {
+          "padding": "12px",
+          "border_bottom": "1px solid #f8f9fa",
+          "font_size": "14px",
+          "color": "#212529"
+        },
+        "row_hover": {
+          "background_color": "#f8f9fa"
+        }
+      },
+      "forms": {
+        "input": {
+          "border": "1px solid #ced4da",
+          "border_radius": "4px",
+          "padding": "8px 12px",
+          "font_size": "14px",
+          "color": "#495057",
+          "background_color": "#ffffff",
+          "width": "100%",
+          "transition": "border-color 0.2s ease-in-out",
+          "focus": {
+            "border_color": "#80bdff",
+            "box_shadow": "0 0 0 0.2rem rgba(0, 123, 255, 0.25)"
+          },
+          "placeholder": {
+            "color": "#6c757d"
+          }
+        },
+        "select": {
+          "border": "1px solid #ced4da",
+          "border_radius": "4px",
+          "padding": "8px 12px",
+          "font_size": "14px",
+          "color": "#495057",
+          "background_color": "#ffffff",
+          "width": "100%",
+          "cursor": "pointer"
+        },
+        "label": {
+          "font_size": "14px",
+          "font_weight": "500",
+          "color": "#495057",
+          "margin_bottom": "4px",
+          "display": "block"
+        }
+      },
+      "navigation_menu": {
+        "item": {
+          "padding": "8px 16px",
+          "color": "#6c757d",
+          "text_decoration": "none",
+          "font_size": "14px",
+          "font_weight": "500",
+          "transition": "color 0.2s ease-in-out",
+          "hover": {
+            "color": "#28a745"
+          }
+        },
+        "item_active": {
+          "color": "#28a745",
+          "border_bottom": "2px solid #28a745"
+        }
+      },
+      "metrics": {
+        "value_positive": {
+          "color": "#28a745",
+          "font_weight": "600"
+        },
+        "value_negative": {
+          "color": "#dc3545",
+          "font_weight": "600"
+        },
+        "value_neutral": {
+          "color": "#212529",
+          "font_weight": "600"
+        },
+        "label": {
+          "color": "#6c757d",
+          "font_size": "12px",
+          "font_weight": "500",
+          "text_transform": "uppercase"
+        }
+      }
+    },
+    "pages": {
+      "dashboard": {
+        "title": "Dashboard",
+        "title_style": {
+          "font_size": "36px",
+          "font_weight": "700",
+          "color": "#212529",
+          "text_align": "center",
+          "margin_bottom": "32px"
+        },
+        "layout": "grid",
+        "sections": [
+          {
+            "id": "price_chart",
+            "type": "chart_widget",
+            "grid_column": "1 / -1",
+            "content": {
+              "title": "BTC/USDT Chart",
+              "symbol": "BTC/USDT",
+              "timeframe": "1H",
+              "exchange": "BINEX_VST",
+              "current_price": "$113,504.4",
+              "price_change": "-$37.74 (-0.03%)",
+              "price_change_style": "negative",
+              "timeframe_buttons": [
+                {"label": "1H", "active": true},
+                {"label": "4H", "active": false},
+                {"label": "1D", "active": false},
+                {"label": "1W", "active": false}
+              ],
+              "chart_height": "300px"
+            }
+          },
+          {
+            "id": "portfolio_summary",
+            "type": "metrics_card",
+            "title": "포트폴리오 요약",
+            "content": {
+              "metrics": [
+                {
+                  "label": "총 자산",
+                  "value": "$125,432.85",
+                  "type": "currency",
+                  "style": "neutral"
+                },
+                {
+                  "label": "일일 수익",
+                  "value": "+$2,341.22 (+1.90%)",
+                  "type": "profit",
+                  "style": "positive"
+                },
+                {
+                  "label": "총 수익률",
+                  "value": "+$15,432.85 (+14.07%)",
+                  "type": "profit",
+                  "style": "positive"
+                }
+              ]
+            }
+          },
+          {
+            "id": "active_positions",
+            "type": "data_table",
+            "title": "활성 포지션",
+            "content": {
+              "headers": ["Symbol", "Side", "Amount", "P&L"],
+              "rows": [
+                {
+                  "symbol": "BTC/USDT",
+                  "side": "Long",
+                  "side_style": "positive",
+                  "amount": "0.5 BTC",
+                  "pnl": "+$1,234.56",
+                  "pnl_style": "positive"
+                },
+                {
+                  "symbol": "ETH/USDT",
+                  "side": "Short",
+                  "side_style": "negative",
+                  "amount": "2.3 ETH",
+                  "pnl": "-$456.78",
+                  "pnl_style": "negative"
+                }
+              ]
+            }
+          },
+          {
+            "id": "market_overview",
+            "type": "data_table",
+            "title": "시장 현황",
+            "content": {
+              "headers": ["Symbol", "Price", "Change"],
+              "rows": [
+                {
+                  "symbol": "BTC/USDT",
+                  "price": "$113,624.27",
+                  "change": "+0.00%",
+                  "change_style": "neutral"
+                },
+                {
+                  "symbol": "ETH/USDT",
+                  "price": "$3,248.32",
+                  "change": "+0.02%",
+                  "change_style": "positive"
+                },
+                {
+                  "symbol": "BNB/USDT",
+                  "price": "$683.91",
+                  "change": "+0.13%",
+                  "change_style": "positive"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "strategies": {
+        "title": "Trading Strategies",
+        "title_style": {
+          "font_size": "36px",
+          "font_weight": "700",
+          "color": "#212529",
+          "text_align": "center",
+          "margin_bottom": "32px"
+        },
+        "layout": "grid",
+        "sections": [
+          {
+            "id": "portfolio_overview",
+            "type": "metrics_grid",
+            "title": "Portfolio Overview",
+            "grid_column": "1 / -1",
+            "content": {
+              "metrics": [
+                {
+                  "label": "Total Capital",
+                  "value": "$NaN",
+                  "style": "neutral"
+                },
+                {
+                  "label": "Allocated",
+                  "value": "$NaN",
+                  "style": "positive"
+                },
+                {
+                  "label": "Available",
+                  "value": "$NaN",
+                  "style": "info"
+                },
+                {
+                  "label": "Active Strategies",
+                  "value": "2",
+                  "style": "neutral"
+                }
+              ]
+            }
+          },
+          {
+            "id": "available_strategies",
+            "type": "strategy_section",
+            "title": "Available Strategies",
+            "actions": [
+              {
+                "type": "button",
+                "label": "Create Strategy",
+                "style": "primary"
+              }
+            ],
+            "content": {
+              "strategies": [
+                {
+                  "name": "CCI Mean Reversion (Template)",
+                  "description": "Commodity Channel Index based trading strategy template",
+                  "created_date": "Created: 2025. 1. 31.",
+                  "actions": [
+                    {
+                      "type": "button",
+                      "label": "Activate for Trading",
+                      "style": "outline"
+                    }
+                  ]
+                },
+                {
+                  "name": "MA Crossover (Template)",
+                  "description": "Moving Average crossover strategy template",
+                  "created_date": "Created: 2025. 1. 31.",
+                  "actions": [
+                    {
+                      "type": "button",
+                      "label": "Activate for Trading",
+                      "style": "outline"
+                    }
+                  ]
+                }
+              ]
+            }
+          },
+          {
+            "id": "active_strategies",
+            "type": "strategy_section",
+            "title": "Active Strategies",
+            "content": {
+              "strategies": [
+                {
+                  "name": "Strategy undefined",
+                  "details": [
+                    "Exchange:",
+                    "Symbol: ETH-USDT",
+                    "Capital: $",
+                    "SL: % | TP: %"
+                  ],
+                  "actions": [
+                    {
+                      "type": "button",
+                      "label": "Deactivate",
+                      "style": "danger"
+                    }
+                  ]
+                },
+                {
+                  "name": "Strategy undefined",
+                  "details": [
+                    "Exchange:",
+                    "Symbol: BTC-USDT",
+                    "Capital: $",
+                    "SL: % | TP: %"
+                  ],
+                  "actions": [
+                    {
+                      "type": "button",
+                      "label": "Deactivate",
+                      "style": "danger"
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "fund_management": {
+        "title": "Fund Management",
+        "title_style": {
+          "font_size": "36px",
+          "font_weight": "700",
+          "color": "#212529",
+          "text_align": "center",
+          "margin_bottom": "32px"
+        },
+        "layout": "two_column",
+        "sections": [
+          {
+            "id": "risk_overview",
+            "type": "risk_dashboard",
+            "title": "Risk Overview",
+            "content": {
+              "risk_metrics": [
+                {
+                  "label": "Risk Status",
+                  "value": "low",
+                  "style": "positive"
+                },
+                {
+                  "label": "Risk Exposure",
+                  "value": "13.0%",
+                  "style": "neutral"
+                },
+                {
+                  "label": "Win Rate",
+                  "value": "50.4%",
+                  "style": "neutral"
+                },
+                {
+                  "label": "Sharpe Ratio",
+                  "value": "1.42",
+                  "style": "neutral"
+                },
+                {
+                  "label": "Profit Factor",
+                  "value": "1.85",
+                  "style": "warning"
+                }
+              ],
+              "capital_allocation": {
+                "title": "Capital Allocation",
+                "metrics": [
+                  {
+                    "label": "Total Allocated",
+                    "value": "$12,280.7",
+                    "style": "neutral"
+                  },
+                  {
+                    "label": "Available",
+                    "value": "$81,987.04",
+                    "style": "neutral"
+                  }
+                ],
+                "actions": [
+                  {
+                    "type": "button",
+                    "label": "Rebalance Portfolio",
+                    "style": "outline"
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "id": "settings",
+            "type": "settings_form",
+            "title": "Settings",
+            "content": {
+              "form_fields": [
+                {
+                  "name": "total_capital",
+                  "label": "Total Capital ($)",
+                  "type": "number",
+                  "placeholder": "Enter amount"
+                },
+                {
+                  "name": "max_risk_per_trade",
+                  "label": "Max Risk Per Trade (%)",
+                  "type": "number",
+                  "value": "2",
+                  "grid_column": "1"
+                },
+                {
+                  "name": "max_daily_loss",
+                  "label": "Max Daily Loss (%)",
+                  "type": "number",
+                  "value": "2",
+                  "grid_column": "2"
+                },
+                {
+                  "name": "max_portfolio_risk",
+                  "label": "Max Portfolio Risk (%)",
+                  "type": "number",
+                  "placeholder": "Enter percentage"
+                },
+                {
+                  "name": "position_sizing_method",
+                  "label": "Position Sizing Method",
+                  "type": "select",
+                  "value": "Fixed Amount",
+                  "options": ["Fixed Amount", "Percentage", "Kelly Criterion"]
+                },
+                {
+                  "name": "rebalance_frequency",
+                  "label": "Rebalance Frequency",
+                  "type": "select",
+                  "value": "Daily",
+                  "options": ["Daily", "Weekly", "Monthly"]
+                },
+                {
+                  "name": "emergency_stop_loss",
+                  "label": "Emergency Stop Loss (%)",
+                  "type": "number",
+                  "placeholder": "Enter percentage",
+                  "description": "Automatically liquidate all positions if total loss exceeds this percentage"
+                }
+              ],
+              "actions": [
+                {
+                  "type": "button",
+                  "label": "Save Settings",
+                  "style": "primary"
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    "responsive": {
+      "breakpoints": {
+        "mobile": "576px",
+        "tablet": "768px",
+        "desktop": "992px",
+        "large": "1200px"
+      },
+      "grid_adjustments": {
+        "mobile": {
+          "columns": "1",
+          "gap": "16px",
+          "padding": "16px"
+        },
+        "tablet": {
+          "columns": "repeat(auto-fit, minmax(250px, 1fr))",
+          "gap": "20px",
+          "padding": "20px"
+        }
+      }
+    }
+  }
+}
