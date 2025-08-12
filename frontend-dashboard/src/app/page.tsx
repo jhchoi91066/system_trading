@@ -14,8 +14,8 @@ export default function Home() {
   const { getToken } = useAuth();
   const { data: websocketData } = useWebSocket();
   const [portfolioStats, setPortfolioStats] = useState<any>(null);
-  const [exchanges, setExchanges] = useState<string>([]);
-  const [symbols, setSymbols] = useState<string>([]);
+  const [exchanges, setExchanges] = useState<string[]>([]);
+  const [symbols, setSymbols] = useState<string[]>([]);
   const [ticker, setTicker] = useState<any>(null);
   const [fetchError, setFetchError] = useState<string | null>(null);
   const [loadingSymbols, setLoadingSymbols] = useState(false);
@@ -148,7 +148,7 @@ export default function Home() {
   };
 
   const runBacktest = async () => {
-    setBacktestLoading(true);
+    setLoadingBacktest(true);
     setFetchError(null);
     try {
       const params = new URLSearchParams();
@@ -168,7 +168,7 @@ export default function Home() {
       setFetchError(`Failed to run backtest: ${e.message}`);
       alert(`백테스트 실행 중 오류가 발생했습니다: ${e.message}`);
     } finally {
-      setBacktestLoading(false);
+      setLoadingBacktest(false);
     }
   };
 

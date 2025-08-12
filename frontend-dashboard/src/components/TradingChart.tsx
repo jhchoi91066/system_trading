@@ -8,8 +8,8 @@ interface TradingChartProps {
   symbol?: string;
   exchange?: string;
   height?: number;
-  interval?: string;
-  onIntervalChange?: (interval: string) => void;
+  timeframe?: string;
+  onTimeframeChange?: (timeframe: string) => void;
 }
 
 interface OHLCVData {
@@ -25,8 +25,8 @@ export default function TradingChart({
   symbol = 'BTC/USDT', 
   exchange = 'binance',
   height = 500,
-  interval = '1h',
-  onIntervalChange
+  timeframe = '1h',
+  onTimeframeChange
 }: TradingChartProps) {
   const { getToken } = useAuth();
   const chartContainerRef = useRef<HTMLDivElement>(null);
@@ -56,7 +56,7 @@ export default function TradingChart({
   useEffect(() => {
     if (!chartContainerRef.current) return;
 
-    console.log(`TradingChart useEffect: symbol=${symbol}, exchange=${exchange}, interval=${interval}, height=${height}`);
+    console.log(`TradingChart useEffect: symbol=${symbol}, exchange=${exchange}, timeframe=${timeframe}, height=${height}`);
 
     // Create chart
     console.log('Creating chart with container:', chartContainerRef.current);
@@ -207,7 +207,7 @@ export default function TradingChart({
         chartRef.current.remove();
       }
     };
-  }, [symbol, exchange, interval, height]);
+  }, [symbol, exchange, timeframe, height]);
 
   const loadChartData = async () => {
     try {
@@ -222,7 +222,7 @@ export default function TradingChart({
 
       // Fetch OHLCV data from backend
       const response = await fetch(
-        `http://127.0.0.1:8000/ohlcv/${exchange}/${encodeURIComponent(symbol)}?timeframe=${interval}&limit=200`,
+        `http://127.0.0.1:8000/ohlcv/${exchange}/${encodeURIComponent(symbol)}?timeframe=${timeframe}&limit=200`,
         { headers }
       );
 
@@ -373,7 +373,7 @@ export default function TradingChart({
             </h3>
             <div className="flex items-center space-x-2">
               <span className="text-xs px-2 py-1 bg-blue-600 rounded text-white">
-                {interval.toUpperCase()}
+                {timeframe.toUpperCase()}
               </span>
               <span className="text-xs px-2 py-1 bg-gray-600 rounded text-white">
                 {exchange.toUpperCase()}
@@ -449,12 +449,12 @@ export default function TradingChart({
                 <button
                   key={tf}
                   onClick={() => {
-                    if (onIntervalChange && tf !== interval) {
-                      onIntervalChange(tf);
+                    if (onTimeframeChange && tf !== timeframe) {
+                      onTimeframeChange(tf);
                     }
                   }}
                   className={`px-2 py-1 text-xs rounded transition-colors ${
-                    tf === interval
+                    tf === timeframe
                       ? 'bg-blue-600 text-white'
                       : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
                   }`}
