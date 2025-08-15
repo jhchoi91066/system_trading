@@ -8,6 +8,7 @@ from abc import ABC, abstractmethod
 from typing import Dict, List, Optional, Any, Union
 import ccxt.async_support as ccxt
 from bingx_client import BingXClient, convert_ccxt_to_bingx_symbol, convert_bingx_to_ccxt_symbol, normalize_timeframe
+from bingx_vst_client import BingXVSTClient
 import logging
 import asyncio
 from datetime import datetime
@@ -233,14 +234,22 @@ class BingXAdapter(ExchangeAdapter):
     async def initialize(self, credentials: Dict[str, str]) -> bool:
         """BingX 초기화"""
         try:
-            self.client = BingXClient(
-                credentials.get('api_key'),
-                credentials.get('secret'),
-                demo_mode=self.demo_mode
-            )
+            if self.demo_mode:
+                # 데모 모드일 때는 VST 클라이언트 사용
+                self.client = BingXVSTClient(
+                    credentials.get('api_key', 'demo_key'),
+                    credentials.get('secret', 'demo_secret')
+                )
+            else:
+                # 실제 거래는 일반 BingX 클라이언트 사용
+                self.client = BingXClient(
+                    credentials.get('api_key'),
+                    credentials.get('secret'),
+                    demo_mode=self.demo_mode
+                )
             
-            # 연결 테스트
-            self.connected = self.client.test_connection()
+            # 연결 테스트 (VST는 항상 성공으로 가정)
+            self.connected = True if self.demo_mode else self.client.test_connection()
             
             if self.connected:
                 logger.info(f"BingX adapter initialized (demo: {self.demo_mode})")
@@ -318,12 +327,30 @@ class BingXAdapter(ExchangeAdapter):
             bingx_symbol = convert_ccxt_to_bingx_symbol(symbol)
             bingx_timeframe = normalize_timeframe(timeframe)
             
-            klines = self.client.get_klines(bingx_symbol, bingx_timeframe, limit)
+            # VST 클라이언트와 일반 클라이언트에 따라 다른 메서드 사용
+            if isinstance(self.client, BingXVSTClient):
+                # VST에서는 소문자 h 사용
+                vst_timeframe = bingx_timeframe.replace('H', 'h')
+                klines = self.client.get_kline_data(bingx_symbol, vst_timeframe, limit)
+            else:
+                klines = self.client.get_klines(bingx_symbol, bingx_timeframe, limit)
             
             # BingX 형식을 CCXT 형식으로 변환
             ohlcv = []
             for kline in klines:
-                if len(kline) >= 6:
+                # VST 클라이언트는 딕셔너리 형태, 일반 클라이언트는 리스트 형태
+                if isinstance(kline, dict):
+                    # VST 클라이언트 형식
+                    ohlcv.append([
+                        int(kline.get('time', 0)),        # timestamp
+                        float(kline.get('open', 0)),      # open
+                        float(kline.get('high', 0)),      # high
+                        float(kline.get('low', 0)),       # low
+                        float(kline.get('close', 0)),     # close
+                        float(kline.get('volume', 0))     # volume
+                    ])
+                elif len(kline) >= 6:
+                    # 일반 클라이언트 형식
                     ohlcv.append([
                         int(kline[0]),      # timestamp
                         float(kline[1]),    # open

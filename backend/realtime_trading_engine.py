@@ -21,7 +21,8 @@ from strategy import (
     bollinger_bands_strategy,
     macd_stochastic_strategy,
     williams_r_mean_reversion_strategy,
-    multi_indicator_strategy
+    multi_indicator_strategy,
+    generate_cci_signals
 )
 
 # 로깅 설정
@@ -35,6 +36,11 @@ class RealtimeTradingEngine:
         self.candle_data = {}  # symbol별 캔들 데이터 저장
         self.indicators = AdvancedIndicators()
         self.strategy_functions = {
+            'CCI': self._cci_strategy_wrapper,
+            'MACD': macd_stochastic_strategy,
+            'RSI': self._rsi_strategy_wrapper,
+            'SMA': self._sma_strategy_wrapper,
+            'Bollinger': bollinger_bands_strategy,
             'bollinger_bands': bollinger_bands_strategy,
             'macd_stochastic': macd_stochastic_strategy,
             'williams_r_mean_reversion': williams_r_mean_reversion_strategy,
@@ -505,6 +511,127 @@ class RealtimeTradingEngine:
         
         self.exchanges.clear()
         logger.info("Realtime Trading Engine stopped")
+    
+    def _cci_strategy_wrapper(self, ohlcv_data, **params):
+        """CCI 전략 래퍼"""
+        try:
+            window = params.get('window', 20)
+            buy_threshold = params.get('buy_threshold', -100)
+            sell_threshold = params.get('sell_threshold', 100)
+            
+            # generate_cci_signals 함수 호출
+            df_signals = generate_cci_signals(ohlcv_data, window, buy_threshold, sell_threshold)
+            
+            # DataFrame을 dict 리스트로 변환
+            signals = []
+            timestamps = [candle[0] for candle in ohlcv_data]
+            prices = [candle[4] for candle in ohlcv_data]  # 종가
+            
+            for i, signal_value in enumerate(df_signals['signal']):
+                if signal_value != 0:  # 신호가 있는 경우만
+                    signals.append({
+                        'timestamp': timestamps[i],
+                        'signal': 'buy' if signal_value == 1 else 'sell',
+                        'price': prices[i],
+                        'reason': f'CCI신호 (임계값: {buy_threshold}/{sell_threshold})'
+                    })
+            
+            return signals
+            
+        except Exception as e:
+            logger.error(f"Error in CCI strategy: {e}")
+            return []
+    
+    def _rsi_strategy_wrapper(self, ohlcv_data, **params):
+        """RSI 전략 래퍼"""
+        try:
+            window = params.get('window', 14)
+            buy_threshold = params.get('buy_threshold', 30)
+            sell_threshold = params.get('sell_threshold', 70)
+            
+            if len(ohlcv_data) < window + 10:
+                return []
+            
+            closes = [candle[4] for candle in ohlcv_data]
+            timestamps = [candle[0] for candle in ohlcv_data]
+            
+            # RSI 계산
+            rsi_values = self.indicators.rsi(closes, window)
+            
+            signals = []
+            for i in range(1, len(rsi_values)):
+                if rsi_values[i] is None or rsi_values[i-1] is None:
+                    continue
+                
+                # 과매도에서 상승 → 매수
+                if rsi_values[i-1] <= buy_threshold and rsi_values[i] > buy_threshold:
+                    signals.append({
+                        'timestamp': timestamps[i],
+                        'signal': 'buy',
+                        'price': closes[i],
+                        'reason': f'RSI과매도반등 (RSI:{rsi_values[i]:.1f})'
+                    })
+                
+                # 과매수에서 하락 → 매도
+                elif rsi_values[i-1] >= sell_threshold and rsi_values[i] < sell_threshold:
+                    signals.append({
+                        'timestamp': timestamps[i],
+                        'signal': 'sell',
+                        'price': closes[i],
+                        'reason': f'RSI과매수하락 (RSI:{rsi_values[i]:.1f})'
+                    })
+            
+            return signals
+            
+        except Exception as e:
+            logger.error(f"Error in RSI strategy: {e}")
+            return []
+    
+    def _sma_strategy_wrapper(self, ohlcv_data, **params):
+        """SMA 전략 래퍼 (이동평균선 교차)"""
+        try:
+            short_window = params.get('short_window', 10)
+            long_window = params.get('long_window', 50)
+            
+            if len(ohlcv_data) < long_window + 10:
+                return []
+            
+            closes = [candle[4] for candle in ohlcv_data]
+            timestamps = [candle[0] for candle in ohlcv_data]
+            
+            # SMA 계산
+            short_sma = self.indicators.sma(closes, short_window)
+            long_sma = self.indicators.sma(closes, long_window)
+            
+            signals = []
+            for i in range(1, len(closes)):
+                if (short_sma[i] is None or short_sma[i-1] is None or 
+                    long_sma[i] is None or long_sma[i-1] is None):
+                    continue
+                
+                # 골든크로스 → 매수
+                if short_sma[i-1] <= long_sma[i-1] and short_sma[i] > long_sma[i]:
+                    signals.append({
+                        'timestamp': timestamps[i],
+                        'signal': 'buy',
+                        'price': closes[i],
+                        'reason': f'SMA골든크로스 ({short_window}/{long_window})'
+                    })
+                
+                # 데드크로스 → 매도
+                elif short_sma[i-1] >= long_sma[i-1] and short_sma[i] < long_sma[i]:
+                    signals.append({
+                        'timestamp': timestamps[i],
+                        'signal': 'sell',
+                        'price': closes[i],
+                        'reason': f'SMA데드크로스 ({short_window}/{long_window})'
+                    })
+            
+            return signals
+            
+        except Exception as e:
+            logger.error(f"Error in SMA strategy: {e}")
+            return []
 
 # 글로벌 인스턴스
 trading_engine = RealtimeTradingEngine()
