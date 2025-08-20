@@ -221,8 +221,10 @@ export default function TradingChart({
       }
 
       // Fetch OHLCV data from backend
+      // Split symbol like 'BTC/USDT' into base and quote
+      const [base, quote] = symbol.split('/');
       const response = await fetch(
-        `http://127.0.0.1:8000/ohlcv/${exchange}/${encodeURIComponent(symbol)}?timeframe=${timeframe}&limit=200`,
+        `http://127.0.0.1:8000/ohlcv/${exchange}/${base}/${quote}?timeframe=${timeframe}&limit=200`,
         { headers }
       );
 

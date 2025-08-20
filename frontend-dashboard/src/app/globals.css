@@ -28,18 +28,18 @@
   --yw-gray-900: #212529;
   
   /* Background Colors */
-  --yw-bg-main: #f8f9fa;
-  --yw-bg-card: #ffffff;
+  --yw-bg-main: #0f172a;
+  --yw-bg-card: #1e293b;
   --yw-bg-nav: #343a40;
   
   /* Text Colors */
-  --yw-text-primary: #212529;
-  --yw-text-secondary: #6c757d;
-  --yw-text-muted: #6c757d;
+  --yw-text-primary: #f8fafc;
+  --yw-text-secondary: #94a3b8;
+  --yw-text-muted: #64748b;
   --yw-text-white: #ffffff;
   
   /* Border */
-  --yw-border-color: #dee2e6;
+  --yw-border-color: #334155;
   
   /* Status Colors */
   --yw-positive: #28a745;
@@ -181,6 +181,24 @@ body {
   color: var(--yw-text-secondary);
 }
 
+.text-secondary {
+  color: var(--yw-text-secondary) !important;
+}
+
+.text-primary {
+  color: var(--yw-text-primary) !important;
+}
+
+.text-white {
+  color: var(--yw-white) !important;
+}
+
+.glass-light {
+  background: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
 /* Youware Design System Component Classes */
 .yw-card, .linear-card {
   background: var(--yw-bg-card);
@@ -248,7 +266,7 @@ body {
 
 .yw-button-outline, .linear-button-secondary {
   background: transparent;
-  color: var(--yw-gray-600);
+  color: var(--yw-text-secondary);
   border: 1px solid var(--yw-border-color);
   border-radius: var(--yw-radius-md);
   padding: 8px 16px;
@@ -263,8 +281,9 @@ body {
 }
 
 .yw-button-outline:hover, .linear-button-secondary:hover {
-  background: var(--yw-gray-100);
-  border-color: var(--yw-gray-500);
+  background: var(--yw-bg-card);
+  border-color: var(--yw-text-secondary);
+  color: var(--yw-text-primary);
 }
 
 .yw-button-timeframe {

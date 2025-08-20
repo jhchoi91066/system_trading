@@ -68,15 +68,54 @@ export default function TradingHistoryPage() {
   const fetchTradingHistory = async () => {
     setLoading(true);
     try {
-      const response = await fetchWithAuth('http://127.0.0.1:8000/trading/history');
+      // Fetch real BingX VST trading data
+      const response = await fetchWithAuth('http://127.0.0.1:8000/vst/trades?limit=100');
       if (response.ok) {
-        const data = await response.json();
-        setTrades(data);
+        const vstData = await response.json();
+        
+        // Transform VST data to match our Trade interface
+        const transformedTrades = vstData.map((trade: any, index: number) => ({
+          id: index + 1,
+          user_id: 'vst_user',
+          strategy_name: 'BingX VST Trading',
+          exchange_name: 'BingX',
+          symbol: trade.symbol || 'BTC/USDT',
+          side: trade.side?.toLowerCase() || 'buy',
+          amount: parseFloat(trade.quantity || trade.amount || '0'),
+          price: parseFloat(trade.price || '0'),
+          fee: parseFloat(trade.fee || '0'),
+          profit_loss: parseFloat(trade.realizedPnl || trade.pnl || '0'),
+          profit_loss_percentage: trade.realizedPnl ? (parseFloat(trade.realizedPnl) / parseFloat(trade.price || '1')) * 100 : 0,
+          status: trade.status || 'completed',
+          created_at: trade.time || trade.timestamp || new Date().toISOString(),
+          closed_at: trade.time || trade.timestamp || new Date().toISOString()
+        }));
+        
+        setTrades(transformedTrades);
       } else {
-        setError('Failed to fetch trading history');
+        // Fallback to simulated data if VST data is not available
+        const fallbackResponse = await fetchWithAuth('http://127.0.0.1:8000/trading/history');
+        if (fallbackResponse.ok) {
+          const data = await fallbackResponse.json();
+          setTrades(data);
+        } else {
+          setError('Failed to fetch trading history from both VST and database');
+        }
       }
     } catch (e: any) {
       setError(`Error fetching trading history: ${e.message}`);
+      
+      // Try fallback to simulated data
+      try {
+        const fallbackResponse = await fetchWithAuth('http://127.0.0.1:8000/trading/history');
+        if (fallbackResponse.ok) {
+          const data = await fallbackResponse.json();
+          setTrades(data);
+          setError('VST data unavailable, showing simulated trades');
+        }
+      } catch (fallbackError) {
+        console.error('Fallback also failed:', fallbackError);
+      }
     } finally {
       setLoading(false);
     }
@@ -154,7 +193,7 @@ export default function TradingHistoryPage() {
   return (
     <div className="min-h-screen p-8">
       <div className="max-w-7xl mx-auto">
-        <h1 className="text-h1 text-center mb-12">Trading History</h1>
+        <h1 className="text-h1 text-center mb-12">BingX VST Trading History</h1>
 
         {error && (
           <div className="linear-card bg-red-900/20 border-red-500/20 mb-6">

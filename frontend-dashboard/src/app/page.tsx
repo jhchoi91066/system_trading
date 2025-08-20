@@ -25,7 +25,7 @@ export default function Home() {
   // Backtesting state
   const [backtestResults, setBacktestResults] = useState<any>(null);
   const [backtestParams, setBacktestParams] = useState({
-    exchange_id: 'bingx_vst',
+    exchange_id: 'bingx',
     symbol: 'BTC/USDT',
     timeframe: '1d',
     limit: 100,
@@ -53,13 +53,50 @@ export default function Home() {
 
   const fetchPortfolioStats = async () => {
     try {
-      const response = await fetchWithAuth('http://127.0.0.1:8000/portfolio/stats');
-      if (response.ok) {
-        const data = await response.json();
-        setPortfolioStats(data);
+      // Fetch real BingX VST balance data
+      const balanceResponse = await fetchWithAuth('http://127.0.0.1:8000/vst/balance');
+      const positionsResponse = await fetchWithAuth('http://127.0.0.1:8000/vst/positions');
+      const tradesResponse = await fetchWithAuth('http://127.0.0.1:8000/vst/trades?limit=10');
+      
+      if (balanceResponse.ok && positionsResponse.ok && tradesResponse.ok) {
+        const balanceData = await balanceResponse.json();
+        const positionsData = await positionsResponse.json();
+        const tradesData = await tradesResponse.json();
+        
+        // Calculate portfolio stats from actual VST data
+        const balance = balanceData.balance || {};
+        const totalCapital = parseFloat(balance.balance || '0');
+        const equity = parseFloat(balance.equity || '0');
+        const usedMargin = parseFloat(balance.usedMargin || '0');
+        const availableMargin = parseFloat(balance.availableMargin || '0');
+        const unrealizedPnl = parseFloat(balance.unrealizedProfit || '0');
+        
+        // Count active positions and strategies
+        const activePositions = Array.isArray(positionsData.positions) ? positionsData.positions.length : 0;
+        const recentTrades = Array.isArray(tradesData) ? tradesData.length : 0;
+        
+        const portfolioStats = {
+          total_capital: totalCapital,
+          available_capital: availableMargin,
+          total_allocated: usedMargin,
+          active_strategies: activePositions,
+          unrealized_pnl: unrealizedPnl,
+          equity: equity,
+          recent_trades_count: recentTrades,
+          is_vst_data: true
+        };
+        
+        setPortfolioStats(portfolioStats);
       } else {
-        console.error('Failed to fetch portfolio stats:', response.status, response.statusText);
-        setFetchError(`Failed to fetch portfolio stats: ${response.statusText}`);
+        // Fallback to original portfolio stats if VST is not available
+        const fallbackResponse = await fetchWithAuth('http://127.0.0.1:8000/portfolio/stats');
+        if (fallbackResponse.ok) {
+          const fallbackData = await fallbackResponse.json();
+          setPortfolioStats({...fallbackData, is_vst_data: false});
+        } else {
+          console.error('Failed to fetch both VST and fallback portfolio stats');
+          setFetchError('Failed to fetch portfolio data');
+        }
       }
     } catch (error: any) {
       console.error('Portfolio stats fetch error:', error);
@@ -83,48 +120,50 @@ export default function Home() {
 
   const handleTestOrder = async () => {
     try {
-      const response = await fetchWithAuth('http://127.0.0.1:8000/demo/orders', {
+      // BingX VST 실제 데모 주문 API 사용
+      const response = await fetchWithAuth('http://127.0.0.1:8000/vst/orders?symbol=BTC-USDT&side=BUY&order_type=MARKET&quantity=0.001', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          exchange: 'bingx_vst',
-          symbol: 'BTC/USDT',
-          side: 'buy',
-          order_type: 'market',
-          amount: 0.001,
-          current_price: ticker?.last || 0 // Use current ticker price if available
-        }),
+        headers: { 'Content-Type': 'application/json' }
       });
+      
       if (response.ok) {
-        alert('📈 테스트 주문 실행! BTC/USDT 소량 매수 주문을 생성합니다.');
+        const result = await response.json();
+        alert('🎮 BingX VST 실제 데모 주문 실행! BTC-USDT 소량 매수 주문이 VST 계정에 생성되었습니다.');
+        console.log('VST Order Result:', result);
       } else {
-        alert('테스트 주문 실행 실패.');
+        const error = await response.json();
+        alert(`VST 주문 실행 실패: ${error.detail || 'Unknown error'}`);
       }
     } catch (error) {
-      alert('테스트 주문 실행 중 오류가 발생했습니다.');
+      console.error('VST Order Error:', error);
+      alert('VST 주문 실행 중 오류가 발생했습니다. API 키 설정을 확인해주세요.');
     }
   };
 
   const handleVSTStatus = async () => {
     try {
-      const response = await fetchWithAuth('http://127.0.0.1:8000/ws/connection-status');
+      const response = await fetchWithAuth('http://127.0.0.1:8000/vst/status');
       if (response.ok) {
         const data = await response.json();
-        alert(`⚙️ VST 상태: ${data.is_connected ? '연결됨' : '연결 끊김'}`);
+        const status = data.connected ? '연결됨' : '연결 끊김';
+        const balance = data.account_info?.vst_balance || 0;
+        alert(`⚙️ BingX VST 상태: ${status}\n💰 VST 잔고: ${balance.toFixed(2)} USDT`);
       } else {
-        alert('⚙️ VST 상태를 확인할 수 없습니다.');
+        alert('⚙️ BingX VST 상태를 확인할 수 없습니다.');
       }
     } catch (error) {
-      alert('⚙️ VST 상태 확인 중 오류가 발생했습니다.');
+      alert('⚙️ BingX VST 상태 확인 중 오류가 발생했습니다.');
     }
   };
 
   const handleVSTBalance = async () => {
     try {
-      const response = await fetchWithAuth('http://127.0.0.1:8000/demo/balance');
+      const response = await fetchWithAuth('http://127.0.0.1:8000/vst/balance');
       if (response.ok) {
         const data = await response.json();
-        alert(`💰 VST 잔고: ${data.balance?.USDT?.total?.toFixed(2) || '0.00'} USDT`);
+        const balance = data.account_info?.vst_balance || 0;
+        const positions = data.account_info?.open_positions || 0;
+        alert(`💰 BingX VST 잔고: ${balance.toFixed(2)} USDT\n📊 활성 포지션: ${positions}개`);
       } else {
         alert('💰 VST 잔고를 확인할 수 없습니다.');
       }
@@ -274,6 +313,13 @@ export default function Home() {
     fetchPortfolioStats();
     fetchExchanges();
     fetchActiveStrategies();
+    
+    // Set up auto-refresh for portfolio stats every 30 seconds
+    const portfolioInterval = setInterval(fetchPortfolioStats, 30000);
+    
+    return () => {
+      clearInterval(portfolioInterval);
+    };
   }, []);
 
   useEffect(() => {
@@ -308,32 +354,55 @@ export default function Home() {
 
         {/* Portfolio Overview */}
         <div className="yw-card mb-8">
-          <h2 className="yw-h2">Portfolio Overview</h2>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="yw-h2">Portfolio Overview</h2>
+            {portfolioStats?.is_vst_data && (
+              <span className="bg-green-100 text-green-800 text-xs font-medium px-2.5 py-0.5 rounded-full">
+                🎮 Live BingX VST Data
+              </span>
+            )}
+          </div>
           <div className="yw-metrics-grid">
             <div className="yw-metric-card">
               <span className="yw-metric-value">
                 ${portfolioStats ? portfolioStats.total_capital?.toFixed(2) || '0.00' : '0.00'}
               </span>
-              <p className="yw-metric-label">Total Capital</p>
+              <p className="yw-metric-label">Total Balance</p>
             </div>
             <div className="yw-metric-card">
               <span className="yw-metric-value">
                 ${portfolioStats ? portfolioStats.available_capital?.toFixed(2) || '0.00' : '0.00'}
               </span>
-              <p className="yw-metric-label">Available</p>
+              <p className="yw-metric-label">Available Margin</p>
             </div>
             <div className="yw-metric-card">
               <span className="yw-metric-value">
                 ${portfolioStats ? portfolioStats.total_allocated?.toFixed(2) || '0.00' : '0.00'}
               </span>
-              <p className="yw-metric-label">Allocated</p>
+              <p className="yw-metric-label">Used Margin</p>
             </div>
             <div className="yw-metric-card">
               <span className="yw-metric-value">
                 {portfolioStats ? portfolioStats.active_strategies || 0 : 0}
               </span>
-              <p className="yw-metric-label">Active Strategies</p>
+              <p className="yw-metric-label">Active Positions</p>
             </div>
+            {portfolioStats?.is_vst_data && (
+              <>
+                <div className="yw-metric-card">
+                  <span className={`yw-metric-value ${portfolioStats.unrealized_pnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                    ${portfolioStats.unrealized_pnl?.toFixed(2) || '0.00'}
+                  </span>
+                  <p className="yw-metric-label">Unrealized P&L</p>
+                </div>
+                <div className="yw-metric-card">
+                  <span className="yw-metric-value">
+                    ${portfolioStats.equity?.toFixed(2) || '0.00'}
+                  </span>
+                  <p className="yw-metric-label">Total Equity</p>
+                </div>
+              </>
+            )}
           </div>
         </div>
 
@@ -470,7 +539,7 @@ export default function Home() {
                   <p className="text-sm text-gray-600 mb-2">{strategy.description}</p>
                   <p className="text-xs text-gray-500 mb-3">Created: {new Date(strategy.created_at).toLocaleDateString()}</p>
                   <button 
-                    onClick={() => handleActivateStrategy(strategy.id, strategy.exchange_name || 'bingx_vst', strategy.symbol || 'BTC/USDT', strategy.allocated_capital || 1000)}
+                    onClick={() => handleActivateStrategy(strategy.id, strategy.exchange_name || 'bingx', strategy.symbol || 'BTC/USDT', strategy.allocated_capital || 1000)}
                     className="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-md text-sm"
                   >
                     Activate for Trading

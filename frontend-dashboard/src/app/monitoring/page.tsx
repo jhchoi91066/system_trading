@@ -8,20 +8,84 @@ export default function MonitoringPage() {
   const [lastUpdateTime, setLastUpdateTime] = useState<string>('');
   const [btcInterval, setBtcInterval] = useState<string>('1h');
   const [ethInterval, setEthInterval] = useState<string>('1h');
+  const [vstPortfolioStats, setVstPortfolioStats] = useState<any>(null);
+  const [loading, setLoading] = useState(false);
   const { data, isConnected: wsConnected, error: wsError, sendMessage } = useWebSocket();
   const { portfolio_stats: portfolioStats, active_strategies: activeStrategies, performance_data: performanceData } = data;
+
+  // VST 포트폴리오 데이터 가져오기
+  const fetchVSTPortfolioData = async () => {
+    try {
+      setLoading(true);
+      
+      // VST 잔고 및 계정 정보 가져오기
+      const balanceResponse = await fetch('http://127.0.0.1:8000/vst/balance');
+      const balanceData = await balanceResponse.json();
+      
+      // VST 포지션 정보 가져오기
+      const positionsResponse = await fetch('http://127.0.0.1:8000/vst/positions');
+      const positionsData = await positionsResponse.json();
+      
+      // VST 거래 기록 가져오기
+      const tradesResponse = await fetch('http://127.0.0.1:8000/vst/trades?limit=100');
+      const tradesData = await tradesResponse.json();
+      
+      if (balanceResponse.ok && positionsResponse.ok && tradesResponse.ok) {
+        const vstBalance = balanceData.account_info?.vst_balance || 0;
+        const openPositions = positionsData.positions?.filter((p: any) => 
+          parseFloat(p.positionAmt || 0) !== 0
+        ) || [];
+        
+        // 할당된 자본 계산 (열린 포지션들의 가치 합계)
+        const allocatedCapital = openPositions.reduce((total: number, position: any) => {
+          const positionValue = Math.abs(parseFloat(position.positionAmt || 0)) * parseFloat(position.markPrice || 0);
+          return total + positionValue;
+        }, 0);
+        
+        // 포트폴리오 통계 생성
+        const portfolioStats = {
+          total_capital: vstBalance,
+          total_allocated: allocatedCapital,
+          available_capital: vstBalance - allocatedCapital,
+          allocation_percentage: vstBalance > 0 ? (allocatedCapital / vstBalance) * 100 : 0,
+          active_strategies: openPositions.length,
+          total_trades: tradesData.trades?.length || 0,
+          open_positions: openPositions.length
+        };
+        
+        setVstPortfolioStats(portfolioStats);
+        console.log('VST Portfolio Stats:', portfolioStats);
+      }
+      
+    } catch (error) {
+      console.error('Error fetching VST portfolio data:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
     if (wsConnected) {
       setLastUpdateTime(new Date().toLocaleTimeString());
     }
+    
+    // VST 데이터 초기 로드
+    fetchVSTPortfolioData();
   }, [wsConnected, data]); // Update timestamp when connection status or data changes
+
+  // 5초마다 VST 데이터 업데이트
+  useEffect(() => {
+    const interval = setInterval(fetchVSTPortfolioData, 5000);
+    return () => clearInterval(interval);
+  }, []);
 
   const requestManualUpdate = () => {
     if (wsConnected) {
       sendMessage({ type: 'request_update' });
       setLastUpdateTime(new Date().toLocaleTimeString()); // Update timestamp immediately on request
     }
+    // VST 데이터도 수동으로 새로고침
+    fetchVSTPortfolioData();
   };
 
   const getStrategyStatus = (strategy: any) => { // Use 'any' for now, or import types from WebSocketProvider
@@ -117,7 +181,7 @@ export default function MonitoringPage() {
             </div>
             <TradingChart 
               symbol="BTC/USDT"
-              exchange="bingx_vst"
+              exchange="bingx"
               height={400}
               interval={btcInterval}
             />
@@ -143,17 +207,49 @@ export default function MonitoringPage() {
             </div>
             <TradingChart 
               symbol="ETH/USDT"
-              exchange="bingx_vst"
+              exchange="bingx"
               height={400}
               interval={ethInterval}
             />
           </div>
         </div>
 
-        {/* Portfolio Overview */}
-        {portfolioStats && (
+        {/* Portfolio Overview - BingX VST Data */}
+        {vstPortfolioStats && (
           <div className="linear-card mb-8">
-            <h2 className="text-h3 mb-6">Portfolio Overview</h2>
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-h3">Portfolio Overview (BingX VST)</h2>
+              {loading && <div className="text-sm text-secondary">Updating...</div>}
+            </div>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div className="glass-light p-4 rounded-lg text-center">
+                <p className="text-small text-secondary mb-1">Total Capital</p>
+                <p className="text-h4 font-medium text-white">${vstPortfolioStats.total_capital.toLocaleString()}</p>
+                <p className="text-xs text-green-400">BingX VST Account</p>
+              </div>
+              <div className="glass-light p-4 rounded-lg text-center">
+                <p className="text-small text-secondary mb-1">Allocated</p>
+                <p className="text-h4 font-medium text-green-400">${vstPortfolioStats.total_allocated.toLocaleString()}</p>
+                <p className="text-xs text-secondary">{vstPortfolioStats.allocation_percentage.toFixed(1)}%</p>
+              </div>
+              <div className="glass-light p-4 rounded-lg text-center">
+                <p className="text-small text-secondary mb-1">Available</p>
+                <p className="text-h4 font-medium text-blue-400">${vstPortfolioStats.available_capital.toLocaleString()}</p>
+                <p className="text-xs text-secondary">Free Margin</p>
+              </div>
+              <div className="glass-light p-4 rounded-lg text-center">
+                <p className="text-small text-secondary mb-1">Open Positions</p>
+                <p className="text-h4 font-medium text-white">{vstPortfolioStats.open_positions}</p>
+                <p className="text-xs text-secondary">{vstPortfolioStats.total_trades} Total Trades</p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Fallback Portfolio Overview */}
+        {!vstPortfolioStats && portfolioStats && (
+          <div className="linear-card mb-8">
+            <h2 className="text-h3 mb-6">Portfolio Overview (Demo)</h2>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               <div className="glass-light p-4 rounded-lg text-center">
                 <p className="text-small text-secondary mb-1">Total Capital</p>

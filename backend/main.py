@@ -2697,6 +2697,167 @@ async def get_demo_performance(user_id: str = Depends(get_current_user)):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error getting demo performance: {str(e)}")
 
+# ============= BingX VST (실제 데모 거래) API =============
+
+@app.post("/vst/orders")
+async def place_vst_order(
+    symbol: str = Query(..., description="거래 심볼 (BTC-USDT 형식)"),
+    side: str = Query(..., description="매수/매도 (BUY/SELL)"),
+    order_type: str = Query(..., description="주문 타입 (MARKET/LIMIT)"),
+    quantity: float = Query(..., description="주문 수량"),
+    price: Optional[float] = Query(None, description="주문 가격 (지정가 주문시)"),
+    user_id: str = Depends(get_current_user)
+):
+    """BingX VST 실제 데모 주문 생성"""
+    try:
+        # BingX VST 클라이언트 생성 (환경 변수에서 API 키 로드)
+        try:
+            vst_client = create_vst_client_from_env()
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=f"BingX API keys not configured: {str(e)}")
+        
+        # VST 연결 테스트
+        if not vst_client.test_vst_connection():
+            raise HTTPException(status_code=503, detail="BingX VST connection failed")
+        
+        # 주문 실행
+        if order_type.upper() == "MARKET":
+            if side.upper() == "BUY":
+                result = vst_client.create_vst_market_buy_order(symbol, quantity)
+            else:
+                result = vst_client.create_vst_market_sell_order(symbol, quantity)
+        elif order_type.upper() == "LIMIT":
+            if price is None:
+                raise HTTPException(status_code=400, detail="Price required for limit orders")
+            if side.upper() == "BUY":
+                result = vst_client.create_vst_limit_buy_order(symbol, quantity, price)
+            else:
+                result = vst_client.create_vst_limit_sell_order(symbol, quantity, price)
+        else:
+            raise HTTPException(status_code=400, detail=f"Unsupported order type: {order_type}")
+        
+        vst_client.close()
+        
+        if 'error' in result:
+            raise HTTPException(status_code=400, detail=result['error'])
+        
+        return {"order": result, "message": "VST order placed successfully"}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"VST order error: {e}")
+        raise HTTPException(status_code=500, detail=f"Error placing VST order: {str(e)}")
+
+@app.get("/vst/balance")
+async def get_vst_balance(user_id: str = Depends(get_current_user)):
+    """BingX VST 잔고 조회"""
+    try:
+        try:
+            vst_client = create_vst_client_from_env()
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=f"BingX API keys not configured: {str(e)}")
+        
+        balance = vst_client.get_vst_balance()
+        account_info = vst_client.get_vst_account_info()
+        
+        vst_client.close()
+        
+        return {
+            "balance": balance,
+            "account_info": account_info
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"VST balance error: {e}")
+        raise HTTPException(status_code=500, detail=f"Error getting VST balance: {str(e)}")
+
+@app.get("/vst/positions")
+async def get_vst_positions(
+    symbol: Optional[str] = Query(None, description="거래 심볼 필터"),
+    user_id: str = Depends(get_current_user)
+):
+    """BingX VST 포지션 조회"""
+    try:
+        try:
+            vst_client = create_vst_client_from_env()
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=f"BingX API keys not configured: {str(e)}")
+        
+        positions = vst_client.get_vst_positions(symbol)
+        
+        vst_client.close()
+        
+        return {"positions": positions}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"VST positions error: {e}")
+        raise HTTPException(status_code=500, detail=f"Error getting VST positions: {str(e)}")
+
+@app.get("/vst/trades")
+async def get_vst_trades(
+    symbol: Optional[str] = Query(None, description="거래 심볼 필터"),
+    limit: int = Query(default=100, description="조회 개수 제한"),
+    user_id: str = Depends(get_current_user)
+):
+    """BingX VST 거래 기록 조회"""
+    try:
+        try:
+            vst_client = create_vst_client_from_env()
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=f"BingX API keys not configured: {str(e)}")
+        
+        trades = vst_client.get_vst_trade_history(symbol, limit)
+        
+        vst_client.close()
+        
+        return {"trades": trades}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"VST trades error: {e}")
+        raise HTTPException(status_code=500, detail=f"Error getting VST trades: {str(e)}")
+
+@app.get("/vst/status")
+async def get_vst_status(user_id: str = Depends(get_current_user)):
+    """BingX VST 연결 상태 확인"""
+    try:
+        try:
+            vst_client = create_vst_client_from_env()
+        except ValueError as e:
+            return {
+                "connected": False,
+                "error": f"API keys not configured: {str(e)}",
+                "account_info": None
+            }
+        
+        connected = vst_client.test_vst_connection()
+        account_info = None
+        
+        if connected:
+            account_info = vst_client.get_vst_account_info()
+        
+        vst_client.close()
+        
+        return {
+            "connected": connected,
+            "account_info": account_info,
+            "message": "VST connection active" if connected else "VST connection failed"
+        }
+        
+    except Exception as e:
+        logger.error(f"VST status error: {e}")
+        return {
+            "connected": False,
+            "error": str(e),
+            "account_info": None
+        }
+
 @app.post("/demo/mode")
 async def switch_demo_mode(
     demo_mode: bool = Query(..., description="데모 모드 활성화 여부"),

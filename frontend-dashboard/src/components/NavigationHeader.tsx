@@ -14,23 +14,60 @@ import { LocalizedNavigationLinks, LocalizedAuthButtons, LocalizedTitle } from "
 export default function NavigationHeader() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
 
+  const headerStyle = {
+    backgroundColor: '#1e293b',
+    borderBottom: '1px solid #64748b',
+    padding: '24px',
+    boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
+    fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
+    minHeight: '80px'
+  };
+
+  const containerStyle = {
+    maxWidth: '1280px',
+    margin: '0 auto',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between'
+  };
+
+  const leftSectionStyle = {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '32px'
+  };
+
+  const rightSectionStyle = {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '16px'
+  };
+
+  const hamburgerStyle = {
+    color: '#d1d5db',
+    background: 'none',
+    border: 'none',
+    cursor: 'pointer',
+    padding: '4px'
+  };
+
   return (
-    <header className="bg-white border-b border-gray-300 p-6 shadow-sm" style={{fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif', minHeight: '80px'}}>
-      <div className="max-w-7xl mx-auto flex items-center justify-between">
-        <div className="flex items-center space-x-8">
+    <header style={headerStyle}>
+      <div style={containerStyle}>
+        <div style={leftSectionStyle}>
           <LocalizedTitle />
           {/* Desktop Navigation Links */}
-          <div className="hidden md:flex">
+          <div style={{display: 'block'}}>
             <LocalizedNavigationLinks />
           </div>
         </div>
-        <div className="flex items-center space-x-4">
+        <div style={rightSectionStyle}>
           <LanguageSelector />
           <AuthButtons />
           {/* Hamburger Menu Button for Mobile */}
-          <div className="md:hidden">
-            <button onClick={() => setIsMenuOpen(!isMenuOpen)} className="text-gray-700 focus:outline-none">
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+          <div style={{display: 'none'}}>
+            <button onClick={() => setIsMenuOpen(!isMenuOpen)} style={hamburgerStyle}>
+              <svg style={{width: '24px', height: '24px'}} fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16M4 18h16"></path>
               </svg>
             </button>
@@ -39,7 +76,7 @@ export default function NavigationHeader() {
       </div>
       {/* Mobile Navigation Menu */}
       {isMenuOpen && (
-        <div className="md:hidden mt-4">
+        <div style={{marginTop: '16px'}}>
           <LocalizedNavigationLinks isMobile={true} />
         </div>
       )}
@@ -63,8 +100,8 @@ function AuthButtons() {
           appearance={{
             elements: {
               avatarBox: "w-8 h-8",
-              userButtonPopoverCard: "bg-white border border-gray-200 shadow-lg",
-              userButtonPopoverActionButton: "text-gray-700 hover:text-gray-900 hover:bg-gray-100"
+              userButtonPopoverCard: "bg-slate-800 border border-slate-600 shadow-lg",
+              userButtonPopoverActionButton: "text-gray-300 hover:text-white hover:bg-slate-700"
             }
           }}
         />
