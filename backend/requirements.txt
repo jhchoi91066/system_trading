@@ -1,9 +1,11 @@
 fastapi
-uvicorn
+uvicorn[standard]
 pytest
 ccxt
 pandas
 numpy
 supabase
 python-dotenv
-python-jose
+python-jose[cryptography]
+websockets
+pydantic

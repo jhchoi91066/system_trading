@@ -53,18 +53,19 @@ export default function Home() {
 
   const fetchPortfolioStats = async () => {
     try {
-      // Fetch real BingX VST balance data
-      const balanceResponse = await fetchWithAuth('http://127.0.0.1:8000/vst/balance');
-      const positionsResponse = await fetchWithAuth('http://127.0.0.1:8000/vst/positions');
-      const tradesResponse = await fetchWithAuth('http://127.0.0.1:8000/vst/trades?limit=10');
+      // Use new combined VST portfolio endpoint for better performance
+      const portfolioResponse = await fetchWithAuth('http://127.0.0.1:8000/vst/portfolio');
       
-      if (balanceResponse.ok && positionsResponse.ok && tradesResponse.ok) {
-        const balanceData = await balanceResponse.json();
-        const positionsData = await positionsResponse.json();
-        const tradesData = await tradesResponse.json();
+      if (portfolioResponse.ok) {
+        const portfolioData = await portfolioResponse.json();
+        
+        // Handle error case from backend
+        if (portfolioData.error) {
+          console.warn('VST API issue:', portfolioData.error);
+        }
         
         // Calculate portfolio stats from actual VST data
-        const balance = balanceData.balance || {};
+        const balance = portfolioData.balance?.balance || {};
         const totalCapital = parseFloat(balance.balance || '0');
         const equity = parseFloat(balance.equity || '0');
         const usedMargin = parseFloat(balance.usedMargin || '0');
@@ -72,8 +73,8 @@ export default function Home() {
         const unrealizedPnl = parseFloat(balance.unrealizedProfit || '0');
         
         // Count active positions and strategies
-        const activePositions = Array.isArray(positionsData.positions) ? positionsData.positions.length : 0;
-        const recentTrades = Array.isArray(tradesData) ? tradesData.length : 0;
+        const activePositions = Array.isArray(portfolioData.positions?.positions) ? portfolioData.positions.positions.length : 0;
+        const recentTrades = Array.isArray(portfolioData.recent_trades) ? portfolioData.recent_trades.length : 0;
         
         const portfolioStats = {
           total_capital: totalCapital,
@@ -314,8 +315,8 @@ export default function Home() {
     fetchExchanges();
     fetchActiveStrategies();
     
-    // Set up auto-refresh for portfolio stats every 30 seconds
-    const portfolioInterval = setInterval(fetchPortfolioStats, 30000);
+    // Set up auto-refresh for portfolio stats every 60 seconds to reduce API load
+    const portfolioInterval = setInterval(fetchPortfolioStats, 60000);
     
     return () => {
       clearInterval(portfolioInterval);

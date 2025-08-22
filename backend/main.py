@@ -32,6 +32,38 @@ from realtime_trading_engine import trading_engine
 from position_manager import position_manager
 from risk_manager import risk_manager, RiskLimits
 from demo_trading import demo_simulator, is_demo_mode_enabled, switch_trading_mode
+import time
+
+# Database error tracking to reduce console spam
+db_error_cache = {
+    'last_error_time': 0,
+    'error_count': 0,
+    'suppress_until': 0
+}
+
+def log_db_error_limited(error_msg: str, component: str = "database"):
+    """Log database errors with rate limiting to reduce console spam"""
+    current_time = time.time()
+    
+    # If we're in suppression period, don't log
+    if current_time < db_error_cache['suppress_until']:
+        return
+    
+    # If it's been more than 60 seconds since last error, reset counter
+    if current_time - db_error_cache['last_error_time'] > 60:
+        db_error_cache['error_count'] = 0
+    
+    db_error_cache['last_error_time'] = current_time
+    db_error_cache['error_count'] += 1
+    
+    # Log first few errors, then suppress for increasing intervals
+    if db_error_cache['error_count'] <= 3:
+        print(f"[{component}] {error_msg}")
+    elif db_error_cache['error_count'] == 4:
+        print(f"[{component}] Database connectivity issues detected. Suppressing similar errors for 5 minutes. Using fallback storage.")
+        db_error_cache['suppress_until'] = current_time + 300  # 5 minutes
+    elif db_error_cache['error_count'] % 20 == 0:  # Log every 20th error after suppression
+        print(f"[{component}] Database still unavailable after {db_error_cache['error_count']} attempts. Using fallback storage.")
 from performance_analyzer import performance_analyzer, convert_trades_to_returns, calculate_rolling_metrics
 from bingx_vst_client import create_vst_client_from_env
 
@@ -761,6 +793,63 @@ async def activate_strategy_trading(activate_data: ActivateStrategy, user_id: st
             }
         )
         
+        # Start real-time monitoring for the activated strategy
+        try:
+            # Get API keys for exchange initialization
+            try:
+                api_keys_response = supabase.table("api_keys").select("*").eq("user_id", user_id).eq("exchange_name", activate_data.exchange_name).execute()
+                
+                if not api_keys_response.data:
+                    # Use real BingX VST credentials from environment
+                    api_key = os.getenv('BINGX_API_KEY', 'dTwrrGyzx3jzFKSWIyufzjdUso9LwdRO1r1jbgHG2yRTfGS2GWDKxUNBVuyOvn5kSJMfcjSRMdQfqamZOSFA')
+                    secret = os.getenv('BINGX_SECRET_KEY', 'LITVDtJ8WdQgKpRFlDqAUrW2asU5buvdBrDUkNYro4JlUS5VFgDHEweTK1C4MFomquGRxa1pwXxWTXhQNeg')
+                    logger.info(f"Using environment VST credentials for {activate_data.exchange_name}")
+                else:
+                    api_key_data = api_keys_response.data[0]
+                    api_key = api_key_data["api_key"] 
+                    secret = api_key_data["secret"]
+                    logger.info(f"Using stored credentials for {activate_data.exchange_name}")
+                
+                # Initialize exchange if not already initialized
+                if activate_data.exchange_name not in trading_engine.exchanges:
+                    await trading_engine.initialize_exchange(activate_data.exchange_name, api_key, secret, demo_mode=True)
+                    logger.info(f"Initialized exchange {activate_data.exchange_name}")
+                
+            except Exception as e:
+                logger.warning(f"Database unavailable, using environment VST credentials: {e}")
+                # Use real BingX VST credentials from environment
+                api_key = os.getenv('BINGX_API_KEY', 'dTwrrGyzx3jzFKSWIyufzjdUso9LwdRO1r1jbgHG2yRTfGS2GWDKxUNBVuyOvn5kSJMfcjSRMdQfqamZOSFA')
+                secret = os.getenv('BINGX_SECRET_KEY', 'LITVDtJ8WdQgKpRFlDqAUrW2asU5buvdBrDUkNYro4JlUS5VFgDHEweTK1C4MFomquGRxa1pwXxWTXhQNeg')
+                if activate_data.exchange_name not in trading_engine.exchanges:
+                    await trading_engine.initialize_exchange(activate_data.exchange_name, api_key, secret, demo_mode=True)
+            
+            # Prepare strategy data for the trading engine
+            strategy_for_engine = {
+                'strategy_id': activate_data.strategy_id,
+                'strategy_type': strategy.get('strategy_type', 'CCI'),
+                'parameters': strategy.get('parameters', {}),
+                'allocated_capital': activate_data.allocated_capital,
+                'stop_loss_percentage': activate_data.stop_loss_percentage,
+                'take_profit_percentage': activate_data.take_profit_percentage,
+                'risk_per_trade': activate_data.risk_per_trade,
+                'is_active': True
+            }
+            
+            # Start monitoring with the trading engine
+            await trading_engine.start_monitoring_symbol(
+                user_id=user_id,
+                exchange_name=activate_data.exchange_name,
+                symbol=activate_data.symbol,
+                timeframe="5m",  # 5분 주기로 변경
+                strategies=[strategy_for_engine]
+            )
+            
+            logger.info(f"✅ Real-time monitoring started for {activate_data.symbol} on {activate_data.exchange_name}")
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to start real-time monitoring: {e}")
+            # Don't fail the activation if monitoring fails, just log the error
+        
         return {
             "message": f"Strategy '{strategy['name']}' activated for {activate_data.symbol} on {activate_data.exchange_name}",
             "active_strategy": active_strategy_data,
@@ -792,16 +881,52 @@ async def deactivate_strategy_trading(active_strategy_id: int, user_id: str = De
         
         # Fallback to persistent storage
         if not strategy_found:
+            logger.info(f"Attempting to deactivate strategy {active_strategy_id} for user {user_id}")
             if persistent_storage.deactivate_strategy(user_id, active_strategy_id):
+                logger.info(f"Strategy {active_strategy_id} deactivated in persistent storage")
                 # Get the deactivated strategy for notification
                 all_strategies = persistent_storage.get_active_strategies(user_id)
+                logger.info(f"After deactivation, found {len(all_strategies)} active strategies")
                 for strategy in all_strategies:
                     if strategy["id"] == active_strategy_id:
                         updated_strategy = strategy
                         strategy_found = True
+                        logger.info(f"Found deactivated strategy in active list: {strategy}")
                         break
+                
+                # If not found in active strategies, try to get it from all strategies
+                if not strategy_found:
+                    logger.info("Strategy not found in active list, searching all strategies")
+                    all_data = persistent_storage._read_json(persistent_storage.files['active_strategies']) or []
+                    for strategy in all_data:
+                        if (strategy.get('user_id') == user_id and 
+                            strategy.get('id') == active_strategy_id):
+                            updated_strategy = strategy
+                            strategy_found = True
+                            logger.info(f"Found deactivated strategy in full list: {strategy}")
+                            break
+            else:
+                logger.warning(f"Failed to deactivate strategy {active_strategy_id} in persistent storage")
         
         if strategy_found and updated_strategy:
+            # Stop real-time monitoring for the deactivated strategy
+            try:
+                symbol = updated_strategy.get('symbol', 'BTC/USDT')
+                exchange_name = updated_strategy.get('exchange_name', 'bingx')
+                monitor_key = f"{user_id}_{exchange_name}_{symbol}_5m"
+                
+                # Remove from active monitors
+                if hasattr(trading_engine, 'active_monitors') and monitor_key in trading_engine.active_monitors:
+                    del trading_engine.active_monitors[monitor_key]
+                    logger.info(f"Stopped monitoring {symbol} for user {user_id}")
+                
+                # Remove candle data
+                if hasattr(trading_engine, 'candle_data') and monitor_key in trading_engine.candle_data:
+                    del trading_engine.candle_data[monitor_key]
+                    
+            except Exception as e:
+                logger.warning(f"Failed to stop real-time monitoring: {e}")
+            
             # Send deactivation notification
             await create_notification_with_broadcast(
                 user_id=user_id,
@@ -1091,7 +1216,7 @@ async def get_portfolio_stats(user_id: str = Depends(get_current_user)):
             secret_key = os.getenv('BINGX_SECRET_KEY', '')
             
             if api_key and secret_key:
-                vst_client = BingXClient(api_key, secret_key, demo=True)  # VST mode
+                vst_client = BingXClient(api_key, secret_key, demo_mode=True)  # VST mode
                 vst_balance = vst_client.get_balance()
                 
                 if vst_balance and 'balance' in vst_balance:
@@ -1268,10 +1393,10 @@ async def get_fund_management_settings(user_id: str = Depends(get_current_user))
         
         # Fetch real VST balance
         vst_client = create_vst_client_from_env()
-        vst_account_info = await vst_client.get_vst_account_info()
+        vst_account_info = vst_client.get_vst_account_info()
         
-        real_total_capital = float(vst_account_info.get('total_asset', settings.get('total_capital', 10000.0)))
-        real_available_capital = float(vst_account_info.get('available_balance', settings.get('total_capital', 10000.0)))
+        real_total_capital = float(vst_account_info.get('vst_balance', settings.get('total_capital', 10000.0) if settings else 10000.0))
+        real_available_capital = float(vst_account_info.get('vst_balance', settings.get('total_capital', 10000.0) if settings else 10000.0))
 
         if not settings:
             # Return default settings, but use real VST balance for total_capital
@@ -1326,10 +1451,10 @@ async def get_risk_metrics(user_id: str = Depends(get_current_user)):
         
         # Fetch real VST account info and positions
         vst_client = create_vst_client_from_env()
-        vst_account_info = await vst_client.get_vst_account_info()
-        vst_positions = await vst_client.get_vst_positions()
+        vst_account_info = vst_client.get_vst_account_info()
+        vst_positions = vst_client.get_vst_positions()
 
-        total_capital = float(vst_account_info.get('total_asset', settings["total_capital"])) # Use real total asset
+        total_capital = float(vst_account_info.get('vst_balance', settings["total_capital"])) # Use real VST balance
         
         # Calculate total allocated from real VST positions
         total_allocated = sum(float(pos.get('positionAmt', 0)) * float(pos.get('avgPrice', 0)) for pos in vst_positions if float(pos.get('positionAmt', 0)) != 0)
@@ -1571,12 +1696,12 @@ async def get_active_strategies_data_raw(user_id: str):
             if response.data:
                 return response.data
         except Exception as e:
-            print(f"Database not available for active strategies data, using in-memory storage: {str(e)}")
+            log_db_error_limited(f"Database not available for active strategies data, using in-memory storage: {str(e)}", "active_strategies")
         
         # Fallback to in-memory storage
         return persistent_storage.get_active_strategies(user_id)
     except Exception as e:
-        print(f"Error fetching active strategies: {e}")
+        log_db_error_limited(f"Error fetching active strategies: {e}", "active_strategies")
         return []
 
 async def get_active_strategies_data(user_id: str):
@@ -2822,6 +2947,39 @@ async def get_vst_trades(
     except Exception as e:
         logger.error(f"VST trades error: {e}")
         raise HTTPException(status_code=500, detail=f"Error getting VST trades: {str(e)}")
+
+@app.get("/vst/portfolio")
+async def get_vst_portfolio_summary(user_id: str = Depends(get_current_user)):
+    """BingX VST 포트폴리오 종합 정보 (잔고, 포지션, 최근거래 통합)"""
+    try:
+        try:
+            vst_client = create_vst_client_from_env()
+            
+            # Fetch all data in parallel for better performance
+            import asyncio
+            balance_task = asyncio.create_task(asyncio.to_thread(vst_client.get_vst_balance))
+            positions_task = asyncio.create_task(asyncio.to_thread(vst_client.get_vst_positions))
+            trades_task = asyncio.create_task(asyncio.to_thread(vst_client.get_vst_trade_history, None, 10))
+            
+            balance_result = await balance_task
+            positions_result = await positions_task  
+            trades_result = await trades_task
+            
+            return {
+                "balance": balance_result,
+                "positions": positions_result, 
+                "recent_trades": trades_result,
+                "combined_at": datetime.now().isoformat()
+            }
+        except Exception as e:
+            return {
+                "error": f"VST API call failed: {str(e)}",
+                "balance": {"balance": {"balance": "0", "equity": "0", "availableMargin": "0", "usedMargin": "0", "unrealizedProfit": "0"}},
+                "positions": {"positions": []},
+                "recent_trades": []
+            }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error getting VST portfolio: {str(e)}")
 
 @app.get("/vst/status")
 async def get_vst_status(user_id: str = Depends(get_current_user)):

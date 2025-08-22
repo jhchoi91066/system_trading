@@ -213,11 +213,16 @@ class PersistentStorage:
             return self._write_json(self.files['fund_management'], data)
     
     # Trading History Storage
-    def get_trading_history(self, user_id: str, limit: Optional[int] = None) -> List[Dict]:
-        """Get trading history for a user"""
+    def get_trading_history(self, user_id: str, limit: Optional[int] = None, strategy_id: Optional[int] = None) -> List[Dict]:
+        """Get trading history for a user, optionally filtered by strategy_id"""
         with self.locks['trading_history']:
             data = self._read_json(self.files['trading_history']) or []
             user_trades = [t for t in data if t.get('user_id') == user_id]
+            
+            # Filter by strategy_id if provided
+            if strategy_id is not None:
+                user_trades = [t for t in user_trades if t.get('strategy_id') == strategy_id]
+            
             user_trades.sort(key=lambda x: x.get('created_at', ''), reverse=True)
             
             if limit:

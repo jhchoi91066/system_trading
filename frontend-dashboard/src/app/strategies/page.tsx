@@ -473,8 +473,11 @@ export default function StrategiesPage() {
                   <label className="block text-small mb-2">Allocated Capital ($):</label>
                   <input
                     type="number"
-                    value={activateForm.allocated_capital}
-                    onChange={(e) => setActivateForm(prev => ({ ...prev, allocated_capital: parseFloat(e.target.value) }))}
+                    value={activateForm.allocated_capital || ''}
+                    onChange={(e) => {
+                      const value = e.target.value === '' ? 0 : parseFloat(e.target.value) || 0;
+                      setActivateForm(prev => ({ ...prev, allocated_capital: value }));
+                    }}
                     className="linear-input w-full"
                     min="1"
                   />
@@ -485,8 +488,11 @@ export default function StrategiesPage() {
                     <label className="block text-small mb-2">Stop Loss (%):</label>
                     <input
                       type="number"
-                      value={activateForm.stop_loss_percentage}
-                      onChange={(e) => setActivateForm(prev => ({ ...prev, stop_loss_percentage: parseFloat(e.target.value) }))}
+                      value={activateForm.stop_loss_percentage || ''}
+                      onChange={(e) => {
+                        const value = e.target.value === '' ? 0 : parseFloat(e.target.value) || 0;
+                        setActivateForm(prev => ({ ...prev, stop_loss_percentage: value }));
+                      }}
                       className="linear-input w-full"
                       min="0.1"
                       step="0.1"
@@ -497,8 +503,11 @@ export default function StrategiesPage() {
                     <label className="block text-small mb-2">Take Profit (%):</label>
                     <input
                       type="number"
-                      value={activateForm.take_profit_percentage}
-                      onChange={(e) => setActivateForm(prev => ({ ...prev, take_profit_percentage: parseFloat(e.target.value) }))}
+                      value={activateForm.take_profit_percentage || ''}
+                      onChange={(e) => {
+                        const value = e.target.value === '' ? 0 : parseFloat(e.target.value) || 0;
+                        setActivateForm(prev => ({ ...prev, take_profit_percentage: value }));
+                      }}
                       className="linear-input w-full"
                       min="0.1"
                       step="0.1"
@@ -514,8 +523,11 @@ export default function StrategiesPage() {
                       <label className="block text-small mb-2">Max Position Size (%):</label>
                       <input
                         type="number"
-                        value={activateForm.max_position_size}
-                        onChange={(e) => setActivateForm(prev => ({ ...prev, max_position_size: parseFloat(e.target.value) }))}
+                        value={activateForm.max_position_size || ''}
+                        onChange={(e) => {
+                          const value = e.target.value === '' ? 0 : parseFloat(e.target.value) || 0;
+                          setActivateForm(prev => ({ ...prev, max_position_size: value }));
+                        }}
                         className="linear-input w-full"
                         min="0.01"
                         max="1"
@@ -527,8 +539,11 @@ export default function StrategiesPage() {
                       <label className="block text-small mb-2">Risk Per Trade (%):</label>
                       <input
                         type="number"
-                        value={activateForm.risk_per_trade}
-                        onChange={(e) => setActivateForm(prev => ({ ...prev, risk_per_trade: parseFloat(e.target.value) }))}
+                        value={activateForm.risk_per_trade || ''}
+                        onChange={(e) => {
+                          const value = e.target.value === '' ? 0 : parseFloat(e.target.value) || 0;
+                          setActivateForm(prev => ({ ...prev, risk_per_trade: value }));
+                        }}
                         className="linear-input w-full"
                         min="0.1"
                         step="0.1"
@@ -540,8 +555,11 @@ export default function StrategiesPage() {
                     <label className="block text-small mb-2">Daily Loss Limit (%):</label>
                     <input
                       type="number"
-                      value={activateForm.daily_loss_limit}
-                      onChange={(e) => setActivateForm(prev => ({ ...prev, daily_loss_limit: parseFloat(e.target.value) }))}
+                      value={activateForm.daily_loss_limit || ''}
+                      onChange={(e) => {
+                        const value = e.target.value === '' ? 0 : parseFloat(e.target.value) || 0;
+                        setActivateForm(prev => ({ ...prev, daily_loss_limit: value }));
+                      }}
                       className="linear-input w-full"
                       min="1"
                       step="0.5"
@@ -627,23 +645,26 @@ export default function StrategiesPage() {
                     <h4 className="text-small font-medium text-white mb-3">Strategy Parameters</h4>
                     <div className="grid grid-cols-2 gap-4">
                       {strategyParameterConfigs[createForm.strategy_type]?.map(param => (
-                        <div key={param.name} className={param.type === 'select' && param.options?.length > 3 ? 'col-span-2' : ''}>
+                        <div key={param.name} className={param.type === 'select' && param.options && param.options.length > 3 ? 'col-span-2' : ''}>
                           <label className="block text-small mb-2">{param.label}:</label>
                           {param.type === 'number' && (
                             <input
                               type="number"
-                              value={createForm.parameters[param.name]}
-                              onChange={(e) => setCreateForm(prev => ({
-                                ...prev,
-                                parameters: { ...prev.parameters, [param.name]: parseFloat(e.target.value) }
-                              }))}
+                              value={(createForm.parameters as any)[param.name] || ''}
+                              onChange={(e) => {
+                                const value = e.target.value === '' ? 0 : parseFloat(e.target.value) || 0;
+                                setCreateForm(prev => ({
+                                  ...prev,
+                                  parameters: { ...prev.parameters, [param.name]: value }
+                                }));
+                              }}
                               className="linear-input w-full"
                               step="any"
                             />
                           )}
                           {param.type === 'select' && (
                             <select
-                              value={createForm.parameters[param.name]}
+                              value={(createForm.parameters as any)[param.name] || ''}
                               onChange={(e) => setCreateForm(prev => ({
                                 ...prev,
                                 parameters: { ...prev.parameters, [param.name]: e.target.value }

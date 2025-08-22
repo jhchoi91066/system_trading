@@ -370,12 +370,22 @@ class BingXAdapter(ExchangeAdapter):
         """시장가 주문"""
         try:
             bingx_symbol = convert_ccxt_to_bingx_symbol(symbol)
-            result = self.client.place_order(
-                symbol=bingx_symbol,
-                side=side.upper(),
-                order_type="MARKET",
-                quantity=amount
-            )
+            
+            # VST 클라이언트인지 확인하고 적절한 메서드 사용
+            if isinstance(self.client, BingXVSTClient):
+                # VST 클라이언트는 별도의 메서드 사용
+                if side.upper() == 'BUY':
+                    result = self.client.create_vst_market_buy_order(bingx_symbol, amount)
+                else:  # SELL
+                    result = self.client.create_vst_market_sell_order(bingx_symbol, amount)
+            else:
+                # 일반 BingX 클라이언트는 place_order 사용
+                result = self.client.place_order(
+                    symbol=bingx_symbol,
+                    side=side.upper(),
+                    order_type="MARKET",
+                    quantity=amount
+                )
             
             return self._normalize_order_result(result, symbol, side, amount)
             
@@ -387,13 +397,23 @@ class BingXAdapter(ExchangeAdapter):
         """지정가 주문"""
         try:
             bingx_symbol = convert_ccxt_to_bingx_symbol(symbol)
-            result = self.client.place_order(
-                symbol=bingx_symbol,
-                side=side.upper(),
-                order_type="LIMIT",
-                quantity=amount,
-                price=price
-            )
+            
+            # VST 클라이언트인지 확인하고 적절한 메서드 사용
+            if isinstance(self.client, BingXVSTClient):
+                # VST 클라이언트는 별도의 메서드 사용
+                if side.upper() == 'BUY':
+                    result = self.client.create_vst_limit_buy_order(bingx_symbol, amount, price)
+                else:  # SELL
+                    result = self.client.create_vst_limit_sell_order(bingx_symbol, amount, price)
+            else:
+                # 일반 BingX 클라이언트는 place_order 사용
+                result = self.client.place_order(
+                    symbol=bingx_symbol,
+                    side=side.upper(),
+                    order_type="LIMIT",
+                    quantity=amount,
+                    price=price
+                )
             
             return self._normalize_order_result(result, symbol, side, amount, price)
             

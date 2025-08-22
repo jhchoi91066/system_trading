@@ -73,25 +73,34 @@ export default function TradingHistoryPage() {
       if (response.ok) {
         const vstData = await response.json();
         
-        // Transform VST data to match our Trade interface
-        const transformedTrades = vstData.map((trade: any, index: number) => ({
-          id: index + 1,
-          user_id: 'vst_user',
-          strategy_name: 'BingX VST Trading',
-          exchange_name: 'BingX',
-          symbol: trade.symbol || 'BTC/USDT',
-          side: trade.side?.toLowerCase() || 'buy',
-          amount: parseFloat(trade.quantity || trade.amount || '0'),
-          price: parseFloat(trade.price || '0'),
-          fee: parseFloat(trade.fee || '0'),
-          profit_loss: parseFloat(trade.realizedPnl || trade.pnl || '0'),
-          profit_loss_percentage: trade.realizedPnl ? (parseFloat(trade.realizedPnl) / parseFloat(trade.price || '1')) * 100 : 0,
-          status: trade.status || 'completed',
-          created_at: trade.time || trade.timestamp || new Date().toISOString(),
-          closed_at: trade.time || trade.timestamp || new Date().toISOString()
-        }));
+        // VST API returns { trades: { orders: [...] } }
+        const vstTrades = vstData?.trades?.orders || [];
         
-        setTrades(transformedTrades);
+        if (vstTrades.length > 0) {
+          // Transform VST data to match our Trade interface
+          const transformedTrades = vstTrades.map((trade: any, index: number) => ({
+            id: index + 1,
+            user_id: 'vst_user',
+            strategy_name: 'BingX VST Trading',
+            exchange_name: 'BingX',
+            symbol: trade.symbol?.replace('-', '/') || 'BTC/USDT', // Convert BTC-USDT to BTC/USDT
+            side: trade.side?.toLowerCase() || 'buy',
+            amount: parseFloat(trade.executedQty || trade.origQty || '0'),
+            price: parseFloat(trade.avgPrice || trade.price || '0'),
+            fee: Math.abs(parseFloat(trade.commission || '0')), // Make fee positive
+            profit_loss: parseFloat(trade.profit || '0'),
+            profit_loss_percentage: trade.profit && trade.avgPrice ? 
+              (parseFloat(trade.profit) / (parseFloat(trade.avgPrice) * parseFloat(trade.executedQty || '1'))) * 100 : 0,
+            status: trade.status?.toLowerCase() === 'filled' ? 'completed' : trade.status?.toLowerCase() || 'completed',
+            created_at: trade.time ? new Date(parseInt(trade.time)).toISOString() : new Date().toISOString(),
+            closed_at: trade.updateTime ? new Date(parseInt(trade.updateTime)).toISOString() : new Date().toISOString()
+          }));
+          
+          setTrades(transformedTrades);
+          setError(null); // Clear any previous errors
+        } else {
+          throw new Error('No VST trades found');
+        }
       } else {
         // Fallback to simulated data if VST data is not available
         const fallbackResponse = await fetchWithAuth('http://127.0.0.1:8000/trading/history');
@@ -122,14 +131,19 @@ export default function TradingHistoryPage() {
   };
 
   const calculateStats = () => {
-    const winning_trades = trades.filter(t => t.profit_loss > 0).length;
-    const losing_trades = trades.filter(t => t.profit_loss < 0).length;
+    // Only count trades that have meaningful profit/loss data (exclude opening positions with 0 profit)
+    const completedTrades = trades.filter(t => t.profit_loss !== 0);
+    
+    const winning_trades = completedTrades.filter(t => t.profit_loss > 0).length;
+    const losing_trades = completedTrades.filter(t => t.profit_loss < 0).length;
     const total_profit_loss = trades.reduce((sum, t) => sum + t.profit_loss, 0);
     const total_fees = trades.reduce((sum, t) => sum + t.fee, 0);
-    const win_rate = trades.length > 0 ? (winning_trades / trades.length) * 100 : 0;
     
-    const profits = trades.filter(t => t.profit_loss > 0).map(t => t.profit_loss);
-    const losses = trades.filter(t => t.profit_loss < 0).map(t => t.profit_loss);
+    // Calculate win rate based on completed trades only
+    const win_rate = completedTrades.length > 0 ? (winning_trades / completedTrades.length) * 100 : 0;
+    
+    const profits = completedTrades.filter(t => t.profit_loss > 0).map(t => t.profit_loss);
+    const losses = completedTrades.filter(t => t.profit_loss < 0).map(t => t.profit_loss);
     
     const average_profit = profits.length > 0 ? profits.reduce((sum, p) => sum + p, 0) / profits.length : 0;
     const average_loss = losses.length > 0 ? losses.reduce((sum, l) => sum + l, 0) / losses.length : 0;
@@ -193,7 +207,10 @@ export default function TradingHistoryPage() {
   return (
     <div className="min-h-screen p-8">
       <div className="max-w-7xl mx-auto">
-        <h1 className="text-h1 text-center mb-12">BingX VST Trading History</h1>
+        <h1 className="text-h1 text-center mb-12">
+          🎮 BingX VST Trading History 
+          <span className="text-small text-green-400 block mt-2">Live Demo Trading Data</span>
+        </h1>
 
         {error && (
           <div className="linear-card bg-red-900/20 border-red-500/20 mb-6">
@@ -206,24 +223,47 @@ export default function TradingHistoryPage() {
 
         {/* Trading Statistics */}
         {stats && (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6 mb-8">
             <div className="linear-card text-center">
               <p className="text-small text-secondary mb-1">Total Trades</p>
               <p className="text-h3 font-medium text-white">{stats.total_trades}</p>
+              <p className="text-xs text-secondary mt-1">
+                {stats.winning_trades}W / {stats.losing_trades}L
+              </p>
             </div>
             <div className="linear-card text-center">
               <p className="text-small text-secondary mb-1">Win Rate</p>
-              <p className="text-h3 font-medium text-green-400">{stats.win_rate.toFixed(1)}%</p>
+              <p className={`text-h3 font-medium ${stats.win_rate >= 50 ? 'text-green-400' : 'text-red-400'}`}>
+                {stats.win_rate.toFixed(1)}%
+              </p>
+              <p className="text-xs text-secondary mt-1">
+                Profitable Trades
+              </p>
             </div>
             <div className="linear-card text-center">
               <p className="text-small text-secondary mb-1">Total P&L</p>
               <p className={`text-h3 font-medium ${getProfitColor(stats.total_profit_loss)}`}>
                 {formatCurrency(stats.total_profit_loss)}
               </p>
+              <p className="text-xs text-secondary mt-1">
+                Net Profit/Loss
+              </p>
             </div>
             <div className="linear-card text-center">
               <p className="text-small text-secondary mb-1">Total Fees</p>
               <p className="text-h3 font-medium text-yellow-400">{formatCurrency(stats.total_fees)}</p>
+              <p className="text-xs text-secondary mt-1">
+                Trading Commissions
+              </p>
+            </div>
+            <div className="linear-card text-center">
+              <p className="text-small text-secondary mb-1">Avg Trade</p>
+              <p className={`text-h3 font-medium ${getProfitColor(stats.total_profit_loss / Math.max(stats.total_trades, 1))}`}>
+                {formatCurrency(stats.total_profit_loss / Math.max(stats.total_trades, 1))}
+              </p>
+              <p className="text-xs text-secondary mt-1">
+                Per Trade
+              </p>
             </div>
           </div>
         )}

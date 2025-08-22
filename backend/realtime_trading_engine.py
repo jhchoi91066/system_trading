@@ -96,6 +96,11 @@ class RealtimeTradingEngine:
             logger.warning(f"Already monitoring {monitor_key}")
             return
         
+        # 거래소가 초기화되어 있는지 확인
+        if exchange_name not in self.exchanges:
+            logger.error(f"Exchange {exchange_name} not initialized. Please initialize exchange first.")
+            return
+        
         # 초기 캔들 데이터 로드
         initial_candles = await self.get_recent_candles(exchange_name, symbol, timeframe, 200)
         if not initial_candles:
@@ -124,17 +129,17 @@ class RealtimeTradingEngine:
         symbol = monitor_info['symbol']
         timeframe = monitor_info['timeframe']
         
-        # 타임프레임별 대기 시간 설정 (초)
+        # 타임프레임별 대기 시간 설정 (초) - 빠른 신호 감지를 위해 더 자주 체크
         timeframe_seconds = {
-            '1m': 60,
-            '5m': 300,
-            '15m': 900,
-            '1h': 3600,
-            '4h': 14400,
-            '1d': 86400
+            '1m': 30,     # 1분 봉은 30초마다 체크
+            '5m': 30,     # 5분 봉은 30초마다 체크 (빠른 감지)
+            '15m': 60,    # 15분 봉은 1분마다 체크
+            '1h': 300,    # 1시간 봉은 5분마다 체크
+            '4h': 900,    # 4시간 봉은 15분마다 체크
+            '1d': 3600    # 일봉은 1시간마다 체크
         }
         
-        wait_seconds = timeframe_seconds.get(timeframe, 60)
+        wait_seconds = timeframe_seconds.get(timeframe, 30)
         
         while monitor_key in self.active_monitors and self.running:
             try:
