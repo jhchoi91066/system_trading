@@ -64,6 +64,22 @@ def log_db_error_limited(error_msg: str, component: str = "database"):
         db_error_cache['suppress_until'] = current_time + 300  # 5 minutes
     elif db_error_cache['error_count'] % 20 == 0:  # Log every 20th error after suppression
         print(f"[{component}] Database still unavailable after {db_error_cache['error_count']} attempts. Using fallback storage.")
+
+def safe_db_operation(operation_name: str = "database_operation"):
+    """Decorator to safely handle database operations with fallback"""
+    def decorator(func):
+        async def wrapper(*args, **kwargs):
+            if supabase is None:
+                log_db_error_limited(f"Database unavailable for {operation_name}, using fallback", operation_name)
+                return None
+            try:
+                return await func(*args, **kwargs)
+            except Exception as e:
+                log_db_error_limited(f"Database error in {operation_name}: {e}", operation_name)
+                return None
+        return wrapper
+    return decorator
+
 from performance_analyzer import performance_analyzer, convert_trades_to_returns, calculate_rolling_metrics
 from bingx_vst_client import create_vst_client_from_env
 
@@ -235,6 +251,9 @@ async def startup_event():
     # Start the realtime trading engine
     await trading_engine.start_engine()
 
+    # Start monitoring for existing active strategies
+    await startup_existing_strategies()
+
     # Start the old periodic broadcast task (can be deprecated later)
     # asyncio.create_task(periodic_data_broadcast())
     
@@ -242,6 +261,68 @@ async def startup_event():
     asyncio.create_task(cleanup_task())
     
     print("✅ Background tasks started.")
+
+async def startup_existing_strategies():
+    """서버 시작 시 기존 활성 전략들에 대한 모니터링을 자동으로 시작"""
+    try:
+        logger.info("🚀 Starting monitoring for existing active strategies...")
+        
+        # 모든 활성 전략 조회
+        all_strategies = persistent_storage.get_active_strategies("test_user_id")  # 임시로 test_user_id 사용
+        active_strategies = [s for s in all_strategies if s.get('is_active', False)]
+        
+        logger.info(f"Found {len(active_strategies)} active strategies to monitor")
+        
+        for strategy in active_strategies:
+            try:
+                user_id = strategy.get('user_id')
+                exchange_name = strategy.get('exchange_name', 'bingx')
+                symbol = strategy.get('symbol', 'BTC/USDT')
+                strategy_id = strategy.get('strategy_id', 1)
+                
+                # API 키 조회 (임시로 환경변수 사용)
+                api_key = os.getenv('BINGX_API_KEY')
+                secret = os.getenv('BINGX_SECRET_KEY')
+                
+                if not api_key or not secret:
+                    logger.warning(f"API keys not found for {exchange_name}")
+                    continue
+                
+                # 거래소 초기화
+                await trading_engine.initialize_exchange(exchange_name, api_key, secret, demo_mode=True)
+                
+                # 전략 정보 구성
+                strategy_for_engine = {
+                    'strategy_type': 'CCI',
+                    'id': strategy_id,
+                    'allocated_capital': strategy.get('allocated_capital', 1000),
+                    'stop_loss_percentage': strategy.get('stop_loss_percentage', 5.0),
+                    'take_profit_percentage': strategy.get('take_profit_percentage', 10.0),
+                    'risk_per_trade': strategy.get('risk_per_trade', 2.0),
+                    'is_active': True,
+                    'parameters': {
+                        'window': 20,
+                        'buy_threshold': -100,
+                        'sell_threshold': 100
+                    }
+                }
+                
+                # 모니터링 시작
+                await trading_engine.start_monitoring_symbol(
+                    user_id=user_id,
+                    exchange_name=exchange_name,
+                    symbol=symbol,
+                    timeframe="5m",
+                    strategies=[strategy_for_engine]
+                )
+                
+                logger.info(f"✅ Started monitoring {symbol} on {exchange_name} for user {user_id}")
+                
+            except Exception as e:
+                logger.error(f"❌ Failed to start monitoring for strategy {strategy.get('id')}: {e}")
+                
+    except Exception as e:
+        logger.error(f"❌ Failed to startup existing strategies: {e}")
 
 class Strategy(BaseModel):
     name: str
@@ -298,11 +379,14 @@ async def get_strategies(user_id: str = Depends(get_current_user)):
     try:
         # Try database first, fallback to in-memory storage
         try:
-            response = supabase.table("strategies").select("*").execute()
-            return response.data if response.data else []
-        except:
-            # Fallback to in-memory storage
-            return strategies_storage
+            if supabase is not None:
+                response = supabase.table("strategies").select("*").execute()
+                return response.data if response.data else []
+        except Exception as e:
+            log_db_error_limited(f"Database error in strategies endpoint: {str(e)}", "strategies")
+        
+        # Fallback to in-memory storage
+        return strategies_storage
     except Exception as e:
         print(f"Error fetching strategies: {str(e)}")
         return strategies_storage
@@ -639,13 +723,116 @@ async def delete_api_key(api_key_id: int, user_id: str = Depends(get_current_use
 def read_root():
     return {"Hello": "World"}
 
+@app.get("/indicators/cci/{symbol}")
+async def get_cci_indicators(
+    symbol: str = Path(..., description="Trading symbol (e.g., BTC-USDT)"),
+    exchange_id: str = Query("bingx", description="Exchange ID"),
+    timeframe: str = Query("5m", description="Timeframe"),
+    limit: int = Query(100, description="Number of candles"),
+    window: int = Query(20, description="CCI calculation window"),
+    method: str = Query("standard", description="CCI calculation method: standard or talib"),
+    current_user: dict = Depends(get_current_user)
+):
+    """Get CCI indicator values and current market signals"""
+    try:
+        from strategy import calculate_cci, generate_cci_signals
+        import pandas as pd
+        
+        # 심볼 형식 변환 (BTC-USDT -> BTC/USDT)
+        trading_symbol = symbol.replace('-', '/')
+        
+        # 시장 데이터 가져오기
+        exchange_class = getattr(ccxt, exchange_id)
+        exchange = exchange_class({'asyncio_loop': asyncio.get_event_loop()})
+        ohlcv = await exchange.fetch_ohlcv(trading_symbol, timeframe, limit=limit)
+        await exchange.close()
+
+        if not ohlcv:
+            raise HTTPException(status_code=404, detail="No OHLCV data found")
+
+        # DataFrame 생성
+        df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+        
+        # CCI 계산 방법 선택
+        if method == "talib":
+            from strategy import calculate_cci_talib_style
+            df['cci'] = calculate_cci_talib_style(df['high'], df['low'], df['close'], window)
+        else:
+            df['cci'] = calculate_cci(df['high'], df['low'], df['close'], window)
+        
+        # 신호 생성 (기본 임계값 사용)
+        buy_threshold = -100
+        sell_threshold = 100
+        signals = generate_cci_signals(ohlcv, window, buy_threshold, sell_threshold)
+        df['signal'] = signals['signal']
+        
+        # 최근 데이터만 반환 (NaN 제거)
+        df_clean = df.dropna()
+        latest_data = df_clean.tail(50)  # 최근 50개 데이터
+        
+        # 현재 CCI 값과 신호
+        current_cci = latest_data['cci'].iloc[-1] if len(latest_data) > 0 else None
+        current_signal = latest_data['signal'].iloc[-1] if len(latest_data) > 0 else 0
+        current_price = latest_data['close'].iloc[-1] if len(latest_data) > 0 else None
+        
+        # 신호 해석
+        signal_interpretation = "중립"
+        if current_signal == 1:
+            signal_interpretation = "매수 신호"
+        elif current_signal == -1:
+            signal_interpretation = "매도 신호"
+        
+        # CCI 과매수/과매도 해석
+        cci_interpretation = "중립"
+        if current_cci and current_cci > sell_threshold:
+            cci_interpretation = "과매수 (매도 고려)"
+        elif current_cci and current_cci < buy_threshold:
+            cci_interpretation = "과매도 (매수 고려)"
+        
+        return {
+            "symbol": symbol,
+            "timeframe": timeframe,
+            "current_time": datetime.utcnow().isoformat(),
+            "current_price": float(current_price) if current_price else None,
+            "cci": {
+                "current_value": float(current_cci) if current_cci else None,
+                "buy_threshold": buy_threshold,
+                "sell_threshold": sell_threshold,
+                "interpretation": cci_interpretation,
+                "window": window
+            },
+            "signal": {
+                "current": int(current_signal) if current_signal else 0,
+                "interpretation": signal_interpretation,
+                "timestamp": int(latest_data['timestamp'].iloc[-1]) if len(latest_data) > 0 else None
+            },
+            "historical_data": [
+                {
+                    "timestamp": int(row['timestamp']),
+                    "price": float(row['close']),
+                    "cci": float(row['cci']),
+                    "signal": int(row['signal'])
+                }
+                for _, row in latest_data.iterrows()
+            ]
+        }
+        
+    except Exception as e:
+        logger.error(f"Error getting CCI indicators: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to get CCI indicators: {str(e)}")
+
 @app.get("/users")
 async def get_users():
     try:
-        response = supabase.table("users").select("*").execute()
-        return response.data if response.data else []
+        if supabase is not None:
+            response = supabase.table("users").select("*").execute()
+            return response.data if response.data else []
+        else:
+            log_db_error_limited("Database unavailable for users endpoint", "users")
+            return []
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+        log_db_error_limited(f"Database error in users endpoint: {str(e)}", "users")
+        return []
 
 @app.get("/exchanges")
 async def get_exchanges():
@@ -952,11 +1139,12 @@ async def get_active_strategies(user_id: str = Depends(get_current_user)):
     try:
         # Try database first, fallback to in-memory storage
         try:
-            response = supabase.table("active_strategies").select("*, strategies(*)").eq("user_id", user_id).eq("is_active", True).execute()
-            if response.data:
-                return response.data
+            if supabase is not None:
+                response = supabase.table("active_strategies").select("*, strategies(*)").eq("user_id", user_id).eq("is_active", True).execute()
+                if response.data:
+                    return response.data
         except Exception as e:
-            print(f"Database not available, using in-memory storage: {str(e)}")
+            log_db_error_limited(f"Database not available for active strategies, using in-memory storage: {str(e)}", "active_strategies")
         
         # Return from memory storage
         return persistent_storage.get_active_strategies(user_id)
@@ -3408,3 +3596,36 @@ async def get_analysis_dashboard(
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error generating analysis dashboard: {str(e)}")
+
+@app.get("/debug/trading-engine")
+async def debug_trading_engine():
+    """실시간 거래 엔진 상태 디버깅"""
+    try:
+        debug_info = {
+            "engine_running": trading_engine.running,
+            "active_monitors": list(trading_engine.active_monitors.keys()),
+            "candle_data_symbols": list(trading_engine.candle_data.keys()),
+            "exchanges": list(trading_engine.exchanges.keys()),
+            "monitor_details": {},
+            "candle_data_counts": {}
+        }
+        
+        # 각 모니터의 상세 정보
+        for monitor_key, monitor_info in trading_engine.active_monitors.items():
+            candle_count = len(trading_engine.candle_data.get(monitor_key, []))
+            debug_info["monitor_details"][monitor_key] = {
+                "user_id": monitor_info.get("user_id"),
+                "symbol": monitor_info.get("symbol"),
+                "exchange": monitor_info.get("exchange_name"),
+                "timeframe": monitor_info.get("timeframe"),
+                "strategies_count": len(monitor_info.get("strategies", [])),
+                "last_candle_time": monitor_info.get("last_candle_time"),
+                "candle_data_count": candle_count,
+                "ready_for_trading": candle_count >= 50
+            }
+            debug_info["candle_data_counts"][monitor_key] = candle_count
+        
+        return debug_info
+        
+    except Exception as e:
+        return {"error": str(e)}

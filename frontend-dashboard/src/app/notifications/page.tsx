@@ -174,8 +174,8 @@ export default function NotificationsPage() {
                 onClick={() => setFilter(tab.key as any)}
                 className={`px-4 py-2 rounded-lg text-small font-medium whitespace-nowrap transition-colors ${
                   filter === tab.key
-                    ? 'bg-blue-500 text-white'
-                    : 'text-secondary hover:text-white hover:bg-gray-700'
+                    ? 'bg-blue-500 text-black'
+                    : 'text-secondary hover:text-black hover:bg-gray-700'
                 }`}
               >
                 {tab.label}

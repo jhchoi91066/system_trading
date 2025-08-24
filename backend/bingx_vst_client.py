@@ -443,6 +443,71 @@ class BingXVSTClient:
         """VST 지정가 매도 주문"""
         return self.place_vst_order(symbol, "SELL", "LIMIT", quantity, price)
     
+    def create_vst_stop_loss_order(self, symbol: str, quantity: float, stop_price: float, position_side: str = "LONG") -> Dict:
+        """VST 손절 주문"""
+        side = "SELL" if position_side == "LONG" else "BUY"
+        return self.place_vst_order(symbol, side, "STOP_MARKET", quantity, stop_price=stop_price, position_side=position_side)
+    
+    def create_vst_take_profit_order(self, symbol: str, quantity: float, price: float, position_side: str = "LONG") -> Dict:
+        """VST 익절 주문"""
+        side = "SELL" if position_side == "LONG" else "BUY"
+        return self.place_vst_order(symbol, side, "TAKE_PROFIT_MARKET", quantity, stop_price=price, position_side=position_side)
+    
+    def create_vst_trailing_stop_order(self, symbol: str, quantity: float, callback_rate: float, position_side: str = "LONG", activation_price: float = None) -> Dict:
+        """
+        VST Trailing Stop 주문
+        
+        Args:
+            symbol: 거래 심볼
+            quantity: 수량
+            callback_rate: 콜백 비율 (0.04 = 4%)
+            position_side: LONG or SHORT
+            activation_price: 활성화 가격 (현재가로 설정됨)
+        """
+        try:
+            side = "SELL" if position_side == "LONG" else "BUY"
+            
+            # 현재 시장가를 활성화 가격으로 사용 (없으면 자동 계산)
+            if activation_price is None:
+                # 현재 포지션에서 mark price를 가져와서 설정
+                positions = self.get_vst_positions()
+                for pos in positions:
+                    if pos.get('symbol') == symbol:
+                        activation_price = float(pos.get('markPrice', '0'))
+                        break
+                
+                if not activation_price:
+                    raise ValueError(f"Cannot determine activation price for {symbol}")
+            
+            params = {
+                'symbol': symbol,
+                'side': side,
+                'positionSide': position_side.upper(),
+                'type': 'TRAILING_STOP_MARKET',
+                'quantity': str(quantity),
+                'priceRate': str(round(callback_rate, 4)),  # 4% = 0.04 (BingX는 priceRate 사용)
+                'activationPrice': str(round(activation_price, 2)),  # 활성화 가격
+                'timeInForce': 'GTC',
+                'workingType': 'CONTRACT_PRICE'
+            }
+            
+            logger.info(f"🎯 Trailing Stop 주문: {symbol} {side} {quantity} (콜백: {callback_rate*100}%)")
+            
+            # API 호출
+            result = self._make_request('POST', '/openApi/swap/v2/trade/order', params)
+            
+            if result.get('code') == 0:
+                order_id = result.get('data', {}).get('orderId')
+                logger.info(f"✅ Trailing Stop 주문 성공: {order_id}")
+            else:
+                logger.error(f"❌ Trailing Stop 주문 실패: {result}")
+            
+            return result
+            
+        except Exception as e:
+            logger.error(f"Trailing Stop 주문 에러: {e}")
+            return {'error': str(e)}
+    
     # ============= 헬퍼 메서드 =============
     
     def test_vst_connection(self) -> bool:

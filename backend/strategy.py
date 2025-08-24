@@ -3,9 +3,27 @@ import numpy as np
 from advanced_indicators import AdvancedIndicators, calculate_all_indicators
 
 def calculate_cci(high, low, close, window=20):
+    """
+    표준 CCI 계산
+    CCI = (Typical Price - SMA of TP) / (0.015 * Mean Absolute Deviation)
+    """
     tp = (high + low + close) / 3
     sma_tp = tp.rolling(window=window).mean()
     mad_tp = tp.rolling(window=window).apply(lambda x: np.mean(np.abs(x - np.mean(x))), raw=True)
+    cci = (tp - sma_tp) / (0.015 * mad_tp)
+    return cci
+
+def calculate_cci_talib_style(high, low, close, window=14):
+    """
+    TA-Lib 스타일 CCI 계산 (더 정확한 MAD 계산)
+    """
+    tp = (high + low + close) / 3
+    sma_tp = tp.rolling(window=window).mean()
+    
+    # TA-Lib 스타일 MAD 계산
+    mad_tp = tp.rolling(window=window).apply(
+        lambda x: np.sum(np.abs(x - np.mean(x))) / len(x), raw=True
+    )
     cci = (tp - sma_tp) / (0.015 * mad_tp)
     return cci
 
@@ -27,18 +45,26 @@ def calculate_stochastic_oscillator(df, k_window=14, d_window=3):
     
     return df
 
-def generate_cci_signals(ohlcv_data, window=20, buy_threshold=100, sell_threshold=-100):
+def generate_cci_signals(ohlcv_data, window=20, buy_threshold=-100, sell_threshold=100):
     df = pd.DataFrame(ohlcv_data, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
     df['cci'] = calculate_cci(df['high'], df['low'], df['close'], window)
 
     signals = pd.DataFrame(index=df.index)
     signals['signal'] = 0
 
-    # Buy signal: CCI crosses above buy_threshold
-    signals.loc[df['cci'] > buy_threshold, 'signal'] = 1
-
-    # Sell signal: CCI crosses below sell_threshold
-    signals.loc[df['cci'] < sell_threshold, 'signal'] = -1
+    # CCI 크로스오버 전략
+    # Buy signal: CCI가 -100 아래에서 -100 위로 상향 돌파
+    for i in range(1, len(df)):
+        prev_cci = df['cci'].iloc[i-1]
+        curr_cci = df['cci'].iloc[i]
+        
+        # 매수 신호: CCI가 -100 아래에서 -100 위로 상향 돌파
+        if prev_cci < buy_threshold and curr_cci >= buy_threshold:
+            signals.iloc[i, signals.columns.get_loc('signal')] = 1
+            
+        # 매도 신호: CCI가 +100 위에서 +100 아래로 하향 돌파  
+        elif prev_cci > sell_threshold and curr_cci <= sell_threshold:
+            signals.iloc[i, signals.columns.get_loc('signal')] = -1
 
     return signals
 

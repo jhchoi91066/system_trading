@@ -41,6 +41,12 @@ export default function Home() {
   // 전략 상태 관리
   const [activeStrategies, setActiveStrategies] = useState<any[]>([]);
   const [loadingStrategies, setLoadingStrategies] = useState(false);
+  
+  // CCI 지표 상태 관리
+  const [cciData, setCciData] = useState<any>(null);
+  const [loadingCci, setLoadingCci] = useState(false);
+  const [cciPeriod, setCciPeriod] = useState(14);
+  const [cciMethod, setCciMethod] = useState('standard');
 
   const fetchWithAuth = async (url: string, options?: RequestInit) => {
     const token = await getToken();
@@ -54,7 +60,7 @@ export default function Home() {
   const fetchPortfolioStats = async () => {
     try {
       // Use new combined VST portfolio endpoint for better performance
-      const portfolioResponse = await fetchWithAuth('http://127.0.0.1:8000/vst/portfolio');
+      const portfolioResponse = await fetchWithAuth('http://127.0.0.1:8001/vst/portfolio');
       
       if (portfolioResponse.ok) {
         const portfolioData = await portfolioResponse.json();
@@ -65,22 +71,23 @@ export default function Home() {
         }
         
         // Calculate portfolio stats from actual VST data
-        const balance = portfolioData.balance?.balance || {};
+        const balance = portfolioData.balance?.data?.balance || {};
         const totalCapital = parseFloat(balance.balance || '0');
         const equity = parseFloat(balance.equity || '0');
         const usedMargin = parseFloat(balance.usedMargin || '0');
         const availableMargin = parseFloat(balance.availableMargin || '0');
         const unrealizedPnl = parseFloat(balance.unrealizedProfit || '0');
         
-        // Count active positions and strategies
-        const activePositions = Array.isArray(portfolioData.positions?.positions) ? portfolioData.positions.positions.length : 0;
-        const recentTrades = Array.isArray(portfolioData.recent_trades) ? portfolioData.recent_trades.length : 0;
+        // Count active positions and get strategy count from active strategies
+        const activePositions = Array.isArray(portfolioData.positions) ? portfolioData.positions.length : 0;
+        const recentTrades = Array.isArray(portfolioData.recent_trades?.orders) ? portfolioData.recent_trades.orders.length : 0;
         
         const portfolioStats = {
           total_capital: totalCapital,
           available_capital: availableMargin,
           total_allocated: usedMargin,
-          active_strategies: activePositions,
+          active_positions: activePositions,
+          active_strategies: activeStrategies.length, // Use actual active strategies count
           unrealized_pnl: unrealizedPnl,
           equity: equity,
           recent_trades_count: recentTrades,
@@ -90,7 +97,7 @@ export default function Home() {
         setPortfolioStats(portfolioStats);
       } else {
         // Fallback to original portfolio stats if VST is not available
-        const fallbackResponse = await fetchWithAuth('http://127.0.0.1:8000/portfolio/stats');
+        const fallbackResponse = await fetchWithAuth('http://127.0.0.1:8001/portfolio/stats');
         if (fallbackResponse.ok) {
           const fallbackData = await fallbackResponse.json();
           setPortfolioStats({...fallbackData, is_vst_data: false});
@@ -108,7 +115,7 @@ export default function Home() {
   // Button handlers
   const handleDemoTrading = async () => {
     try {
-      const response = await fetchWithAuth('http://127.0.0.1:8000/demo/initialize', { method: 'POST' });
+      const response = await fetchWithAuth('http://127.0.0.1:8001/demo/initialize', { method: 'POST' });
       if (response.ok) {
         alert('🚀 Demo Trading 시작! BingX VST 모드로 가상 거래를 시작합니다.');
       } else {
@@ -122,7 +129,7 @@ export default function Home() {
   const handleTestOrder = async () => {
     try {
       // BingX VST 실제 데모 주문 API 사용
-      const response = await fetchWithAuth('http://127.0.0.1:8000/vst/orders?symbol=BTC-USDT&side=BUY&order_type=MARKET&quantity=0.001', {
+      const response = await fetchWithAuth('http://127.0.0.1:8001/vst/orders?symbol=BTC-USDT&side=BUY&order_type=MARKET&quantity=0.001', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' }
       });
@@ -143,7 +150,7 @@ export default function Home() {
 
   const handleVSTStatus = async () => {
     try {
-      const response = await fetchWithAuth('http://127.0.0.1:8000/vst/status');
+      const response = await fetchWithAuth('http://127.0.0.1:8001/vst/status');
       if (response.ok) {
         const data = await response.json();
         const status = data.connected ? '연결됨' : '연결 끊김';
@@ -159,7 +166,7 @@ export default function Home() {
 
   const handleVSTBalance = async () => {
     try {
-      const response = await fetchWithAuth('http://127.0.0.1:8000/vst/balance');
+      const response = await fetchWithAuth('http://127.0.0.1:8001/vst/balance');
       if (response.ok) {
         const data = await response.json();
         const balance = data.account_info?.vst_balance || 0;
@@ -177,6 +184,7 @@ export default function Home() {
 
   const handleTimeframeChange = (timeframe: string) => {
     setChartTimeframe(timeframe);
+    fetchCCIData();
   };
 
   const handleBacktestChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
@@ -197,7 +205,7 @@ export default function Home() {
           params.append(key, (backtestParams as any)[key].toString());
         }
       }
-      const response = await fetchWithAuth(`http://127.0.0.1:8000/backtest/${backtestParams.exchange_id}/${backtestParams.symbol}?${params.toString()}`);
+      const response = await fetchWithAuth(`http://127.0.0.1:8001/backtest/${backtestParams.exchange_id}/${backtestParams.symbol}?${params.toString()}`);
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
@@ -214,7 +222,7 @@ export default function Home() {
 
   const handleActivateStrategy = async (strategyId: number, exchangeName: string, symbol: string, allocatedCapital: number) => {
     try {
-      const response = await fetchWithAuth('http://127.0.0.1:8000/trading/activate', {
+      const response = await fetchWithAuth('http://127.0.0.1:8001/trading/activate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -241,7 +249,7 @@ export default function Home() {
     setLoadingExchanges(true);
     setFetchError(null);
     try {
-      const response = await fetchWithAuth('http://127.0.0.1:8000/exchanges');
+      const response = await fetchWithAuth('http://127.0.0.1:8001/exchanges');
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
@@ -259,7 +267,7 @@ export default function Home() {
     setLoadingSymbols(true);
     setFetchError(null);
     try {
-      const response = await fetchWithAuth(`http://127.0.0.1:8000/symbols/${backtestParams.exchange_id}`);
+      const response = await fetchWithAuth(`http://127.0.0.1:8001/symbols/${backtestParams.exchange_id}`);
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
@@ -280,7 +288,7 @@ export default function Home() {
     setLoadingTicker(true);
     setFetchError(null);
     try {
-      const response = await fetchWithAuth(`http://127.0.0.1:8000/ticker/${backtestParams.exchange_id}/${backtestParams.symbol}`);
+      const response = await fetchWithAuth(`http://127.0.0.1:8001/ticker/${backtestParams.exchange_id}/${backtestParams.symbol}`);
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
@@ -296,7 +304,7 @@ export default function Home() {
   const fetchActiveStrategies = async () => {
     setLoadingStrategies(true);
     try {
-      const response = await fetchWithAuth('http://127.0.0.1:8000/trading/active');
+      const response = await fetchWithAuth('http://127.0.0.1:8001/trading/active');
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
@@ -310,10 +318,26 @@ export default function Home() {
     }
   };
 
+  const fetchCCIData = async () => {
+    setLoadingCci(true);
+    try {
+      const response = await fetchWithAuth(`http://127.0.0.1:8001/indicators/cci/BTC-USDT?timeframe=${chartTimeframe}&limit=50&window=${cciPeriod}&method=${cciMethod}`);
+      if (response.ok) {
+        const data = await response.json();
+        setCciData(data);
+      }
+    } catch (error) {
+      console.error('Failed to fetch CCI data:', error);
+    } finally {
+      setLoadingCci(false);
+    }
+  };
+
   useEffect(() => {
     fetchPortfolioStats();
     fetchExchanges();
     fetchActiveStrategies();
+    fetchCCIData();
     
     // Set up auto-refresh for portfolio stats every 60 seconds to reduce API load
     const portfolioInterval = setInterval(fetchPortfolioStats, 60000);
@@ -331,6 +355,10 @@ export default function Home() {
     fetchTicker();
   }, [backtestParams.exchange_id, backtestParams.symbol]);
 
+  useEffect(() => {
+    fetchCCIData();
+  }, [cciPeriod]);
+
   if (fetchError) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -339,7 +367,7 @@ export default function Home() {
           <p className="text-gray-700 mb-6">{fetchError}</p>
           <button 
             onClick={() => setFetchError(null)}
-            className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-md"
+            className="bg-blue-500 hover:bg-blue-600 text-black px-4 py-2 rounded-md"
           >
             Dismiss
           </button>
@@ -386,7 +414,13 @@ export default function Home() {
               <span className="yw-metric-value">
                 {portfolioStats ? portfolioStats.active_strategies || 0 : 0}
               </span>
-              <p className="yw-metric-label">Active Positions</p>
+              <p className="yw-metric-label">Active Strategies</p>
+            </div>
+            <div className="yw-metric-card">
+              <span className="yw-metric-value">
+                {portfolioStats ? portfolioStats.active_positions || 0 : 0}
+              </span>
+              <p className="yw-metric-label">Open Positions</p>
             </div>
             {portfolioStats?.is_vst_data && (
               <>
@@ -411,10 +445,18 @@ export default function Home() {
         <div className="yw-card mb-8">
           <h2 className="yw-h2">Demo Trading Controls</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
-            <button className="yw-button-primary" onClick={handleDemoTrading}>🚀 Start Demo Trading</button>
-            <button className="yw-button-primary" onClick={handleTestOrder}>📈 Place Test Order</button>
-            <button className="yw-button-outline" onClick={handleVSTStatus}>⚙️ Check VST Status</button>
-            <button className="yw-button-outline" onClick={handleVSTBalance}>💰 View VST Balance</button>
+            <button className="bg-blue-600 hover:bg-blue-700 text-black font-medium py-3 px-4 rounded-lg transition-colors duration-200 flex items-center justify-center" onClick={handleDemoTrading}>
+              🚀 Start Demo Trading
+            </button>
+            <button className="bg-green-600 hover:bg-green-700 text-black font-medium py-3 px-4 rounded-lg transition-colors duration-200 flex items-center justify-center" onClick={handleTestOrder}>
+              📈 Place Test Order
+            </button>
+            <button className="bg-gray-600 hover:bg-gray-700 text-black font-medium py-3 px-4 rounded-lg transition-colors duration-200 flex items-center justify-center" onClick={handleVSTStatus}>
+              ⚙️ Check VST Status
+            </button>
+            <button className="bg-purple-600 hover:bg-purple-700 text-black font-medium py-3 px-4 rounded-lg transition-colors duration-200 flex items-center justify-center" onClick={handleVSTBalance}>
+              💰 View VST Balance
+            </button>
           </div>
           <div className="yw-card" style={{backgroundColor: 'var(--yw-info)', color: 'var(--yw-white)', border: 'none'}}>
             <p className="yw-body" style={{color: 'var(--yw-white)', fontWeight: 'var(--yw-font-weight-semibold)'}}>
@@ -424,6 +466,90 @@ export default function Home() {
               Using BingX VST (Virtual Simulated Trading) with virtual funds.
             </p>
           </div>
+        </div>
+
+        {/* CCI Indicator Display */}
+        <div className="yw-card mb-8">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="yw-h2">CCI 지표 & 매매 신호</h2>
+            <div className="flex items-center gap-4">
+              <div className="flex items-center gap-2">
+                <label className="text-sm font-medium text-black">기간:</label>
+                <select 
+                  value={cciPeriod}
+                  onChange={(e) => setCciPeriod(Number(e.target.value))}
+                  className="bg-white border border-gray-300 text-black text-sm rounded-lg p-2"
+                >
+                  <option value={14}>14</option>
+                  <option value={20}>20</option>
+                  <option value={30}>30</option>
+                </select>
+              </div>
+              <div className="flex items-center gap-2">
+                <label className="text-sm font-medium text-black">계산방법:</label>
+                <select 
+                  value={cciMethod}
+                  onChange={(e) => setCciMethod(e.target.value)}
+                  className="bg-white border border-gray-300 text-black text-sm rounded-lg p-2"
+                >
+                  <option value="standard">표준</option>
+                  <option value="talib">TA-Lib</option>
+                </select>
+              </div>
+              <button 
+                onClick={fetchCCIData}
+                disabled={loadingCci}
+                className="bg-purple-600 hover:bg-purple-700 text-black font-medium py-2 px-4 rounded-lg transition-colors duration-200"
+              >
+                {loadingCci ? '로딩 중...' : '🔄 CCI 업데이트'}
+              </button>
+            </div>
+          </div>
+          
+          {cciData && (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+              <div className="bg-gray-50 p-4 rounded-lg">
+                <h3 className="font-semibold text-sm mb-2">현재 CCI 값</h3>
+                <div className="text-2xl font-bold mb-1">
+                  {cciData.cci.current_value?.toFixed(2) || 'N/A'}
+                </div>
+                <div className={`text-sm ${
+                  cciData.cci.current_value > cciData.cci.sell_threshold ? 'text-red-600' :
+                  cciData.cci.current_value < cciData.cci.buy_threshold ? 'text-green-600' : 'text-gray-600'
+                }`}>
+                  {cciData.cci.interpretation}
+                </div>
+              </div>
+              
+              <div className="bg-gray-50 p-4 rounded-lg">
+                <h3 className="font-semibold text-sm mb-2">매매 신호</h3>
+                <div className={`text-2xl font-bold mb-1 ${
+                  cciData.signal.current === 1 ? 'text-green-600' :
+                  cciData.signal.current === -1 ? 'text-red-600' : 'text-gray-600'
+                }`}>
+                  {cciData.signal.interpretation}
+                </div>
+                <div className="text-sm text-gray-500">
+                  현재가: ${cciData.current_price?.toFixed(2)}
+                </div>
+              </div>
+              
+              <div className="bg-gray-50 p-4 rounded-lg">
+                <h3 className="font-semibold text-sm mb-2">임계값 설정</h3>
+                <div className="text-sm space-y-1">
+                  <div>매수 임계값: {cciData.cci.buy_threshold}</div>
+                  <div>매도 임계값: {cciData.cci.sell_threshold}</div>
+                  <div>윈도우: {cciData.cci.window}기간</div>
+                </div>
+              </div>
+            </div>
+          )}
+          
+          {!cciData && !loadingCci && (
+            <div className="text-center py-8 text-gray-500">
+              CCI 지표 데이터를 불러오려면 위의 업데이트 버튼을 클릭하세요.
+            </div>
+          )}
         </div>
 
         {/* BTC/USDT Chart */}
@@ -441,7 +567,7 @@ export default function Home() {
                   onClick={() => handleTimeframeChange(timeframe)}
                   className={`px-3 py-1 rounded text-sm transition-colors ${
                     chartTimeframe === timeframe
-                      ? 'bg-blue-500 text-white shadow-md'
+                      ? 'bg-blue-500 text-black shadow-md'
                       : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
                   }`}
                 >
@@ -510,7 +636,7 @@ export default function Home() {
           <button 
             onClick={runBacktest}
             disabled={loadingBacktest}
-            className="w-full bg-blue-500 hover:bg-blue-600 text-white py-2 px-4 rounded-md disabled:opacity-50"
+            className="w-full bg-blue-500 hover:bg-blue-600 text-black py-2 px-4 rounded-md disabled:opacity-50"
           >
             {loadingBacktest ? '백테스트 실행 중...' : '백테스트 실행'}
           </button>
@@ -541,7 +667,7 @@ export default function Home() {
                   <p className="text-xs text-gray-500 mb-3">Created: {new Date(strategy.created_at).toLocaleDateString()}</p>
                   <button 
                     onClick={() => handleActivateStrategy(strategy.id, strategy.exchange_name || 'bingx', strategy.symbol || 'BTC/USDT', strategy.allocated_capital || 1000)}
-                    className="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-md text-sm"
+                    className="bg-green-500 hover:bg-green-600 text-black px-4 py-2 rounded-md text-sm"
                   >
                     Activate for Trading
                   </button>

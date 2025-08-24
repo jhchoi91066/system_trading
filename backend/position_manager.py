@@ -50,6 +50,11 @@ class PositionManager:
         try:
             position_id = f"{user_id}_{exchange_name}_{symbol}_{strategy_id}_{int(datetime.now().timestamp())}"
             
+            # entry_price가 None인 경우 처리
+            if entry_price is None:
+                logger.error(f"entry_price is None for position creation: {symbol}")
+                return None
+            
             # 손절/익절 가격 계산
             if side == 'long':
                 stop_loss = entry_price * (1 - stop_loss_pct / 100) if stop_loss_pct > 0 else None

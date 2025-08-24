@@ -170,7 +170,7 @@ export default function MonitoringPage() {
                     onClick={() => setBtcInterval(tf)}
                     className={`px-2 py-1 text-xs rounded transition-colors ${
                       tf === btcInterval
-                        ? 'bg-blue-600 text-white'
+                        ? 'bg-blue-600 text-black'
                         : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
                     }`}
                   >
@@ -196,7 +196,7 @@ export default function MonitoringPage() {
                     onClick={() => setEthInterval(tf)}
                     className={`px-2 py-1 text-xs rounded transition-colors ${
                       tf === ethInterval
-                        ? 'bg-blue-600 text-white'
+                        ? 'bg-blue-600 text-black'
                         : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
                     }`}
                   >
