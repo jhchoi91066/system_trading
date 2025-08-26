@@ -1395,26 +1395,24 @@ async def get_portfolio_stats(user_id: str = Depends(get_current_user)):
         if not active_strategies:
             active_strategies = persistent_storage.get_active_strategies(user_id)
         
-        # Try to get actual BingX VST balance
+        # Try to get actual BingX VST balance using optimized client
         try:
-            from bingx_client import BingXClient
+            vst_client = create_vst_client_from_env()
+            vst_balance = vst_client.get_vst_balance()
             
-            # Get BingX VST credentials (would normally come from user settings)
-            api_key = os.getenv('BINGX_API_KEY', '')
-            secret_key = os.getenv('BINGX_SECRET_KEY', '')
-            
-            if api_key and secret_key:
-                vst_client = BingXClient(api_key, secret_key, demo_mode=True)  # VST mode
-                vst_balance = vst_client.get_balance()
-                
-                if vst_balance and 'balance' in vst_balance:
-                    total_capital = float(vst_balance['balance'])
-                    available_capital = total_capital  # For now, assume all is available
-                    total_allocated = 0  # VST doesn't track allocated separately
+            if vst_balance and vst_balance.get('code') == 0 and vst_balance.get('data'):
+                balance_data = vst_balance['data']
+                if isinstance(balance_data, dict) and 'balance' in balance_data:
+                    balance_info = balance_data['balance']
+                    total_capital = float(balance_info.get('balance', 0))
+                    available_capital = float(balance_info.get('availableMargin', 0))
+                    total_allocated = float(balance_info.get('usedMargin', 0))
                 else:
-                    raise Exception("No VST balance data received")
+                    raise Exception("Unexpected VST balance data structure")
             else:
-                raise Exception("No BingX API credentials found")
+                raise Exception("No VST balance data received")
+            
+            vst_client.close()
         except Exception as e:
             print(f"Error getting VST balance, using defaults: {e}")
             # Calculate portfolio stats (fallback)
@@ -3071,8 +3069,40 @@ async def get_vst_balance(user_id: str = Depends(get_current_user)):
         except ValueError as e:
             raise HTTPException(status_code=400, detail=f"BingX API keys not configured: {str(e)}")
         
+        # 잔고 정보 한 번만 조회
         balance = vst_client.get_vst_balance()
-        account_info = vst_client.get_vst_account_info()
+        
+        # 포지션 정보도 한 번만 조회
+        positions = vst_client.get_vst_positions()
+        
+        # VST 계정 정보 직접 계산 (중복 API 호출 방지)
+        vst_balance = 0.0
+        if balance.get('code') == 0 and balance.get('data'):
+            balance_data = balance['data']
+            if isinstance(balance_data, dict) and 'balance' in balance_data:
+                balance_info = balance_data['balance']
+                if balance_info.get('asset') in ['VST', 'USDT']:
+                    vst_balance = float(balance_info.get('availableMargin', 0))
+        
+        # 포지션 수 계산
+        open_positions = 0
+        total_positions = 0
+        if isinstance(positions, dict) and positions.get('code') == 0 and positions.get('data'):
+            positions_data = positions['data']
+            if isinstance(positions_data, list):
+                total_positions = len(positions_data)
+                open_positions = len([p for p in positions_data if float(p.get('positionAmt', 0)) != 0])
+        elif isinstance(positions, list):
+            # 포지션 데이터가 직접 리스트인 경우
+            total_positions = len(positions)
+            open_positions = len([p for p in positions if float(p.get('positionAmt', 0)) != 0])
+        
+        account_info = {
+            'vst_balance': vst_balance,
+            'open_positions': open_positions,
+            'total_positions': total_positions,
+            'account_status': 'active'
+        }
         
         vst_client.close()
         

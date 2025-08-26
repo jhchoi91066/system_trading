@@ -47,7 +47,27 @@ async def start_cci_monitoring():
             'is_active': True
         }
         
-        # 실시간 모니터링 시작
+        # ETH CCI 전략 설정
+        eth_cci_strategy = {
+            'strategy_id': 'cci_crossover_eth',
+            'strategy_type': 'CCI',
+            'parameters': {
+                'window': 14,
+                'buy_threshold': -100,
+                'sell_threshold': 100
+            },
+            'allocated_capital': 100.0,
+            'stop_loss_percentage': 5.0,
+            'take_profit_percentage': 10.0,
+            'risk_per_trade': 2.0,
+            'is_active': True
+        }
+        
+        # 엔진 시작 (중요!)
+        await engine.start_engine()
+        print('✅ 거래 엔진 시작 완료')
+        
+        # BTC/USDT 실시간 모니터링 시작
         print('🔄 BTC/USDT CCI 모니터링 시작...')
         await engine.start_monitoring_symbol(
             user_id='test_user',
@@ -57,9 +77,19 @@ async def start_cci_monitoring():
             strategies=[cci_strategy]
         )
         
+        # ETH/USDT 실시간 모니터링 시작
+        print('🔄 ETH/USDT CCI 모니터링 시작...')
+        await engine.start_monitoring_symbol(
+            user_id='test_user',
+            exchange_name='bingx',
+            symbol='ETH/USDT',
+            timeframe='5m',
+            strategies=[eth_cci_strategy]
+        )
+        
         print('✅ CCI 모니터링이 시작되었습니다!')
         print('📊 현재 모니터링 중:')
-        print(f'  - 심볼: BTC/USDT')
+        print(f'  - 심볼: BTC/USDT, ETH/USDT')
         print(f'  - 타임프레임: 5분')
         print(f'  - 전략: CCI 크로스오버')
         print(f'  - 매수 신호: CCI가 -100 아래서 -100 위로 상향 돌파')

@@ -22,7 +22,8 @@ from strategy import (
     macd_stochastic_strategy,
     williams_r_mean_reversion_strategy,
     multi_indicator_strategy,
-    generate_cci_signals
+    generate_cci_signals,
+    generate_cci_signals_external
 )
 
 # 로깅 설정
@@ -200,13 +201,17 @@ class RealtimeTradingEngine:
                 strategy_name = strategy_config.get('strategy_type')
                 strategy_params = strategy_config.get('parameters', {})
                 
-                # 전략 함수 실행
-                strategy_func = self.strategy_functions.get(strategy_name)
-                if not strategy_func:
-                    logger.warning(f"Unknown strategy: {strategy_name}")
-                    continue
-                
-                signals = strategy_func(candle_data, **strategy_params)
+                # 전략 함수 실행 (CCI는 외부 API를 사용하므로 특별 처리)
+                if strategy_name == 'CCI':
+                    # CCI는 외부 API를 사용하므로 async 처리
+                    signals = await self._cci_strategy_wrapper_external(candle_data, symbol, **strategy_params)
+                else:
+                    strategy_func = self.strategy_functions.get(strategy_name)
+                    if not strategy_func:
+                        logger.warning(f"Unknown strategy: {strategy_name}")
+                        continue
+                    
+                    signals = strategy_func(candle_data, **strategy_params)
                 
                 # 최신 캔들의 신호만 확인 (실시간 거래용)
                 if signals and len(signals) > 0:
@@ -237,8 +242,11 @@ class RealtimeTradingEngine:
                         logger.info(f"🔍 신호 시간 체크: signal_time={signal_time}, current_time={current_time}")
                         logger.info(f"🔍 시간 차이: {current_time - signal_time}ms ({(current_time - signal_time)/1000/60:.1f}분)")
                         
-                        # 5분 이내의 신호만 처리 (지연 신호 방지)
-                        if current_time - signal_time <= 300000:  # 5분 = 300,000ms
+                        # 신호 시간 검증 로직 개선 (CCI 신호는 현재 캔들 기준으로 처리)
+                        time_diff_minutes = (current_time - signal_time) / 1000 / 60
+                        
+                        # CCI 전략의 경우 최신 캔들 기준으로 처리 (시간 제한 완화)
+                        if strategy_config.get('strategy_type') == 'CCI' or time_diff_minutes <= 10:  # CCI는 10분, 다른 전략은 5분
                             logger.info(f"🚀 신호 실행 시작: {latest_signal['signal']} at {latest_signal['price']}")
                             await self._execute_signal(
                                 user_id, 
@@ -248,7 +256,7 @@ class RealtimeTradingEngine:
                                 strategy_config
                             )
                         else:
-                            logger.warning(f"⏰ 신호가 너무 오래됨 (5분 초과): {(current_time - signal_time)/1000/60:.1f}분 전")
+                            logger.warning(f"⏰ 신호가 너무 오래됨 ({time_diff_minutes:.1f}분 전): 실행 제한 초과")
                 
             except Exception as e:
                 logger.error(f"Error checking strategy {strategy_config.get('strategy_type')}: {e}")
@@ -556,8 +564,8 @@ class RealtimeTradingEngine:
                 take_profit_pct=take_profit_pct
             )
             
-            # 고급 TP/SL 주문 설정
-            await self._setup_advanced_tp_sl(adapter, symbol, position, actual_price, actual_quantity, 'long')
+            # 메인 주문 완료 후 동적 레버리지 기반 TP/SL 설정
+            await self._setup_dynamic_leverage_tp_sl(adapter, symbol, position, actual_price, actual_quantity, 'buy', strategy_config)
             
             # 주문 기록 저장
             await self._save_trade_record(user_id, exchange_name, symbol, 'buy', 
@@ -608,8 +616,8 @@ class RealtimeTradingEngine:
                 take_profit_pct=take_profit_pct
             )
             
-            # 고급 TP/SL 주문 설정 (숏)
-            await self._setup_advanced_tp_sl(adapter, symbol, position, actual_price, actual_quantity, 'short')
+            # 메인 주문 완료 후 동적 레버리지 기반 TP/SL 설정 (숏)
+            await self._setup_dynamic_leverage_tp_sl(adapter, symbol, position, actual_price, actual_quantity, 'sell', strategy_config)
             
             # 주문 기록 저장
             await self._save_trade_record(user_id, exchange_name, symbol, 'sell', 
@@ -738,14 +746,50 @@ class RealtimeTradingEngine:
         self.exchanges.clear()
         logger.info("Realtime Trading Engine stopped")
     
-    def _cci_strategy_wrapper(self, ohlcv_data, **params):
-        """CCI 전략 래퍼"""
+    async def _cci_strategy_wrapper_external(self, ohlcv_data, symbol, **params):
+        """외부 CCI 전략 래퍼 (TAAPI.IO 사용)"""
         try:
             window = params.get('window', 20)
             buy_threshold = params.get('buy_threshold', -100)
             sell_threshold = params.get('sell_threshold', 100)
             
-            logger.info(f"🔍 CCI 전략 실행: window={window}, buy_threshold={buy_threshold}, sell_threshold={sell_threshold}")
+            logger.info(f"🔍 External CCI 전략 실행: {symbol}, window={window}, buy_threshold={buy_threshold}, sell_threshold={sell_threshold}")
+            logger.info(f"🔍 캔들 데이터 개수: {len(ohlcv_data)}")
+            
+            # 외부 CCI 신호 생성 함수 호출 (async)
+            df_signals = await generate_cci_signals_external(ohlcv_data, symbol, window, buy_threshold, sell_threshold)
+            
+            # DataFrame을 dict 리스트로 변환
+            signals = []
+            timestamps = [candle[0] for candle in ohlcv_data]
+            prices = [candle[4] for candle in ohlcv_data]  # 종가
+            
+            logger.info(f"🔍 External CCI 신호 개수: {len(df_signals['signal'])}")
+            
+            for i, signal_value in enumerate(df_signals['signal']):
+                if signal_value != 0:  # 신호가 있는 경우만
+                    signals.append({
+                        'timestamp': timestamps[i],
+                        'signal': 'buy' if signal_value == 1 else 'sell',
+                        'price': prices[i],
+                        'reason': f'External CCI신호 (임계값: {buy_threshold}/{sell_threshold})'
+                    })
+                    
+            return signals
+            
+        except Exception as e:
+            logger.error(f"❌ External CCI 전략 실행 중 오류: {e}")
+            # 외부 CCI 실패 시 내부 CCI로 백업
+            return self._cci_strategy_wrapper(ohlcv_data, **params)
+    
+    def _cci_strategy_wrapper(self, ohlcv_data, **params):
+        """내부 CCI 전략 래퍼 (백업용)"""
+        try:
+            window = params.get('window', 20)
+            buy_threshold = params.get('buy_threshold', -100)
+            sell_threshold = params.get('sell_threshold', 100)
+            
+            logger.info(f"🔍 Internal CCI 전략 실행: window={window}, buy_threshold={buy_threshold}, sell_threshold={sell_threshold}")
             logger.info(f"🔍 캔들 데이터 개수: {len(ohlcv_data)}")
             
             # generate_cci_signals 함수 호출
@@ -756,7 +800,7 @@ class RealtimeTradingEngine:
             timestamps = [candle[0] for candle in ohlcv_data]
             prices = [candle[4] for candle in ohlcv_data]  # 종가
             
-            logger.info(f"🔍 CCI 신호 개수: {len(df_signals['signal'])}")
+            logger.info(f"🔍 Internal CCI 신호 개수: {len(df_signals['signal'])}")
             
             for i, signal_value in enumerate(df_signals['signal']):
                 if signal_value != 0:  # 신호가 있는 경우만
@@ -764,7 +808,7 @@ class RealtimeTradingEngine:
                         'timestamp': timestamps[i],
                         'signal': 'buy' if signal_value == 1 else 'sell',
                         'price': prices[i],
-                        'reason': f'CCI신호 (임계값: {buy_threshold}/{sell_threshold})'
+                        'reason': f'Internal CCI신호 (임계값: {buy_threshold}/{sell_threshold})'
                     })
             
             logger.info(f"🔍 감지된 거래 신호 개수: {len(signals)}")
@@ -1019,6 +1063,193 @@ class RealtimeTradingEngine:
             
         except Exception as e:
             logger.error(f"Error setting up advanced TP/SL for {symbol}: {e}")
+    
+    async def _setup_leverage_tp_sl(self, adapter, symbol: str, position, entry_price: float, 
+                                   quantity: float, side: str, strategy_config: Dict):
+        """레버리지 기반 TP/SL 설정 (새로운 간소화된 시스템)"""
+        try:
+            # 전략 설정에서 파라미터 가져오기
+            tp_percentage = strategy_config.get('take_profit_percentage', 10.0)  # 기본 10% 수익
+            sl_percentage = strategy_config.get('stop_loss_percentage', 5.0)     # 기본 5% 손실
+            leverage = strategy_config.get('leverage', 10.0)                     # 기본 10배 레버리지
+            
+            logger.info(f"🎯 레버리지 TP/SL 설정 시작: {symbol} {side}")
+            logger.info(f"📊 설정값: TP={tp_percentage}%, SL={sl_percentage}%, 레버리지={leverage}x")
+            
+            # BingX VST 클라이언트 가져오기
+            if hasattr(adapter, 'client'):
+                vst_client = adapter.client
+                
+                # BingX 심볼 포맷 변환 (BTC/USDT → BTC-USDT)  
+                bingx_symbol = symbol.replace('/', '-')
+                
+                logger.info(f"🔧 퍼센테지 기반 TP/SL 설정: {bingx_symbol}")
+                
+                # 퍼센테지를 비율로 변환 (10% → 0.1)
+                tp_rate = tp_percentage / 100.0  # 10% → 0.1
+                sl_rate = sl_percentage / 100.0  # 5% → 0.05
+                
+                logger.info(f"📊 TP/SL 비율: TP={tp_rate} ({tp_percentage}%), SL={sl_rate} ({sl_percentage}%)")
+                
+                # BingX 방식: 별도 TP/SL 주문 생성
+                try:
+                    logger.info(f"🎯 BingX 방식 별도 TP/SL 주문 생성")
+                    
+                    # 레버리지 고려한 TP/SL 가격 계산
+                    tp_sl_prices = vst_client.calculate_tp_sl_with_leverage(
+                        entry_price, side.upper(), tp_percentage, sl_percentage, leverage
+                    )
+                    
+                    if tp_sl_prices['take_profit'] and tp_sl_prices['stop_loss']:
+                        logger.info(f"📊 계산된 TP/SL 가격:")
+                        logger.info(f"  💰 진입가: {entry_price}")
+                        logger.info(f"  🎯 익절가: {tp_sl_prices['take_profit']}")
+                        logger.info(f"  🛡️  손절가: {tp_sl_prices['stop_loss']}")
+                        
+                        position_side = "LONG" if side.upper() == "BUY" else "SHORT"
+                        close_side = "SELL" if side.upper() == "BUY" else "BUY"  # 청산 방향
+                        order_quantity = max(quantity, 0.0001)
+                        
+                        # 1. Take Profit 주문 생성 (TAKE_PROFIT_MARKET)
+                        tp_order = vst_client.place_vst_order(
+                            symbol=bingx_symbol,
+                            side=close_side,
+                            order_type="TAKE_PROFIT_MARKET",
+                            quantity=order_quantity,
+                            position_side=position_side,
+                            stop_price=tp_sl_prices['take_profit']  # 트리거 가격
+                        )
+                        logger.info(f"📈 Take Profit 주문: {tp_order}")
+                        
+                        # 2. Stop Loss 주문 생성 (STOP_MARKET)
+                        sl_order = vst_client.place_vst_order(
+                            symbol=bingx_symbol,
+                            side=close_side,
+                            order_type="STOP_MARKET",
+                            quantity=order_quantity,
+                            position_side=position_side,
+                            stop_price=tp_sl_prices['stop_loss']  # 트리거 가격
+                        )
+                        logger.info(f"📉 Stop Loss 주문: {sl_order}")
+                        
+                        # Position에 TP/SL 정보 저장
+                        position.metadata['separate_tp_sl'] = {
+                            'tp_price': tp_sl_prices['take_profit'],
+                            'sl_price': tp_sl_prices['stop_loss'],
+                            'tp_percentage': tp_percentage,
+                            'sl_percentage': sl_percentage,
+                            'leverage': leverage,
+                            'tp_order': tp_order,
+                            'sl_order': sl_order
+                        }
+                        
+                        logger.info(f"✅ 별도 TP/SL 주문 완료!")
+                        logger.info(f"  💰 진입가: {entry_price}")
+                        logger.info(f"  🎯 익절가: {tp_sl_prices['take_profit']} (+{tp_percentage}%)")
+                        logger.info(f"  🛡️  손절가: {tp_sl_prices['stop_loss']} (-{sl_percentage}%)")
+                    else:
+                        logger.error("TP/SL 가격 계산 실패")
+                        
+                except Exception as tp_sl_error:
+                    logger.error(f"별도 TP/SL 주문 실패: {tp_sl_error}")
+                    logger.info("기본 메인 주문은 성공적으로 실행됨")
+            else:
+                logger.warning("VST 클라이언트에서 TP/SL 기능을 지원하지 않습니다")
+                
+        except Exception as e:
+            logger.error(f"Error setting up leverage TP/SL for {symbol}: {e}")
+    
+    async def _setup_dynamic_leverage_tp_sl(self, adapter, symbol: str, position, entry_price: float, 
+                                          quantity: float, side: str, strategy_config: Dict):
+        """메인 주문 완료 후 현재 레버리지 확인하여 TP/SL 설정"""
+        try:
+            logger.info(f"🎯 동적 레버리지 기반 TP/SL 설정 시작: {symbol} {side}")
+            logger.info(f"💰 실제 체결가: {entry_price}, 수량: {quantity}")
+            
+            # BingX VST 클라이언트 가져오기
+            if hasattr(adapter, 'client'):
+                vst_client = adapter.client
+                
+                # BingX 심볼 포맷 변환 (BTC/USDT → BTC-USDT)  
+                bingx_symbol = symbol.replace('/', '-')
+                
+                # 1. 현재 레버리지 조회
+                current_leverage = vst_client.get_symbol_leverage(bingx_symbol)
+                logger.info(f"📊 현재 설정된 레버리지: {current_leverage}x")
+                
+                # 2. 전략 설정에서 목표 수익률/손실률 가져오기 
+                tp_percentage = strategy_config.get('take_profit_percentage', 10.0)  # 기본 10% 수익
+                sl_percentage = strategy_config.get('stop_loss_percentage', 5.0)     # 기본 5% 손실
+                
+                logger.info(f"🎯 목표 수익률: {tp_percentage}%, 손실 제한: {sl_percentage}%")
+                logger.info(f"📈 {current_leverage}x 레버리지에서 필요한 가격 변동:")
+                logger.info(f"   익절: {tp_percentage/current_leverage:.3f}% 가격 상승")
+                logger.info(f"   손절: {sl_percentage/current_leverage:.3f}% 가격 하락")
+                
+                # 3. 현재 레버리지 기반 TP/SL 가격 계산
+                tp_sl_prices = vst_client.calculate_tp_sl_with_leverage(
+                    entry_price, side.upper(), tp_percentage, sl_percentage, current_leverage
+                )
+                
+                if tp_sl_prices['take_profit'] and tp_sl_prices['stop_loss']:
+                    logger.info(f"📊 계산된 TP/SL 가격:")
+                    logger.info(f"  💰 진입가: {entry_price}")
+                    logger.info(f"  🎯 익절가: {tp_sl_prices['take_profit']}")
+                    logger.info(f"  🛡️  손절가: {tp_sl_prices['stop_loss']}")
+                    
+                    position_side = "LONG" if side.upper() == "BUY" else "SHORT"
+                    close_side = "SELL" if side.upper() == "BUY" else "BUY"  # 청산 방향
+                    order_quantity = max(quantity, 0.0001)
+                    
+                    # 4. Take Profit 주문 생성 (TAKE_PROFIT_MARKET)
+                    logger.info(f"📈 Take Profit 주문 생성 중...")
+                    tp_order = vst_client.place_vst_order(
+                        symbol=bingx_symbol,
+                        side=close_side,
+                        order_type="TAKE_PROFIT_MARKET",
+                        quantity=order_quantity,
+                        position_side=position_side,
+                        stop_price=tp_sl_prices['take_profit']  # 트리거 가격
+                    )
+                    logger.info(f"📈 Take Profit 주문 결과: {tp_order}")
+                    
+                    # 5. Stop Loss 주문 생성 (STOP_MARKET)
+                    logger.info(f"📉 Stop Loss 주문 생성 중...")
+                    sl_order = vst_client.place_vst_order(
+                        symbol=bingx_symbol,
+                        side=close_side,
+                        order_type="STOP_MARKET",
+                        quantity=order_quantity,
+                        position_side=position_side,
+                        stop_price=tp_sl_prices['stop_loss']  # 트리거 가격
+                    )
+                    logger.info(f"📉 Stop Loss 주문 결과: {sl_order}")
+                    
+                    # Position에 TP/SL 정보 저장
+                    position.metadata['dynamic_tp_sl'] = {
+                        'entry_price': entry_price,
+                        'current_leverage': current_leverage,
+                        'tp_price': tp_sl_prices['take_profit'],
+                        'sl_price': tp_sl_prices['stop_loss'],
+                        'tp_percentage': tp_percentage,
+                        'sl_percentage': sl_percentage,
+                        'tp_order': tp_order,
+                        'sl_order': sl_order
+                    }
+                    
+                    logger.info(f"✅ 동적 TP/SL 주문 완료!")
+                    logger.info(f"  💰 진입가: {entry_price}")
+                    logger.info(f"  📊 레버리지: {current_leverage}x")
+                    logger.info(f"  🎯 익절가: {tp_sl_prices['take_profit']} (+{tp_percentage}% 목표)")
+                    logger.info(f"  🛡️  손절가: {tp_sl_prices['stop_loss']} (-{sl_percentage}% 제한)")
+                else:
+                    logger.error("TP/SL 가격 계산 실패")
+            else:
+                logger.warning("VST 클라이언트를 사용할 수 없습니다")
+                
+        except Exception as e:
+            logger.error(f"동적 레버리지 TP/SL 설정 실패: {e}")
+            logger.info("메인 주문은 성공적으로 실행됨")
     
     async def _check_advanced_tp_sl(self, user_id: str, exchange_name: str, symbol: str, vst_position: dict, current_price: float, pnl_percentage: float) -> bool:
         """

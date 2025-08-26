@@ -247,6 +247,37 @@ class BingXVSTClient:
             logger.error(f"❌ Failed to get VST demo positions: {e}")
             return []
     
+    def get_symbol_leverage(self, symbol: str) -> float:
+        """특정 심볼의 현재 레버리지 조회 - 포지션 정보에서 추출"""
+        try:
+            # 1. 먼저 포지션 정보에서 레버리지 확인 시도
+            positions = self.get_vst_positions()
+            for position in positions:
+                if position.get('symbol') == symbol and float(position.get('positionAmt', 0)) != 0:
+                    leverage = float(position.get('leverage', 10.0))
+                    logger.info(f"📊 {symbol} 포지션 레버리지: {leverage}x")
+                    return leverage
+            
+            # 2. 포지션이 없으면 계정 설정에서 기본 레버리지 조회 시도
+            params = {'symbol': symbol}
+            result = self._make_request("GET", "/openApi/swap/v2/user/balance", params)
+            
+            if result.get('code') == 0:
+                # 계정 잔고 정보에서 레버리지 정보 확인
+                balance_data = result.get('data', {})
+                if 'balance' in balance_data:
+                    # VST 계정은 기본적으로 25x 레버리지 설정
+                    logger.info(f"📊 {symbol} 기본 레버리지: 25.0x (VST 계정)")
+                    return 25.0
+            
+            # 3. 모든 시도 실패 시 기본값 반환
+            logger.warning(f"레버리지 조회 실패 - 기본값 25x 사용")
+            return 25.0  # VST 계정 기본값
+                
+        except Exception as e:
+            logger.error(f"❌ Failed to get leverage for {symbol}: {e}")
+            return 25.0  # VST 계정 기본값
+    
     def get_vst_trade_history(self, symbol: str = None, limit: int = 100) -> List[Dict]:
         """VST 거래 기록 조회"""
         try:
@@ -332,7 +363,8 @@ class BingXVSTClient:
     
     def place_vst_order(self, symbol: str, side: str, order_type: str, quantity: float, 
                        price: float = None, position_side: str = "LONG", 
-                       time_in_force: str = "GTC", stop_price: float = None) -> Dict:
+                       time_in_force: str = "GTC", stop_price: float = None,
+                       take_profit: float = None, stop_loss: float = None) -> Dict:
         """
         VST 주문 생성 (실제 BingX VST 계정에 주문)
         
@@ -345,6 +377,8 @@ class BingXVSTClient:
             position_side: 포지션 방향 ("LONG" or "SHORT")
             time_in_force: 주문 유효 시간 ("GTC", "IOC", "FOK")
             stop_price: 스톱 가격 (STOP 주문 시 필수)
+            take_profit: 익절가 (선택사항)
+            stop_loss: 손절가 (선택사항)
             
         Returns:
             주문 결과
@@ -366,6 +400,13 @@ class BingXVSTClient:
             if stop_price is not None:
                 params['stopPrice'] = str(stop_price)
                 
+            # TP/SL 파라미터 (BingX API는 절대가격만 지원하는 것으로 확인됨)
+            if take_profit is not None:
+                params['takeProfitPrice'] = str(take_profit)
+                
+            if stop_loss is not None:
+                params['stopLossPrice'] = str(stop_loss)
+                
             # timeInForce는 LIMIT 주문에만 적용
             if order_type.upper() == 'LIMIT':
                 params['timeInForce'] = time_in_force
@@ -384,6 +425,147 @@ class BingXVSTClient:
             
         except Exception as e:
             logger.error(f"Failed to place VST order: {e}")
+            return {'error': str(e)}
+    
+    def calculate_tp_sl_with_leverage(self, entry_price: float, side: str, 
+                                    tp_percentage: float, sl_percentage: float, 
+                                    leverage: float) -> Dict[str, float]:
+        """
+        레버리지를 고려한 TP/SL 가격 계산
+        
+        Args:
+            entry_price: 진입 가격
+            side: 포지션 방향 ("BUY"=롱, "SELL"=숏)
+            tp_percentage: 익절 퍼센테지 (예: 10.0 = 10%)
+            sl_percentage: 손절 퍼센테지 (예: 5.0 = 5%)
+            leverage: 레버리지 배수 (예: 10.0 = 10배)
+            
+        Returns:
+            {'take_profit': float, 'stop_loss': float}
+        """
+        try:
+            # 퍼센테지 기반 TP/SL 계산 (레버리지는 수익률에만 영향, 가격은 직접 계산)
+            # 예: 10% 수익을 원하면, 10배 레버리지에서는 1% 가격 변동 필요
+            price_tp_rate = tp_percentage / leverage  # 가격에서 필요한 변동률
+            price_sl_rate = sl_percentage / leverage  # 가격에서 허용할 변동률
+            
+            if side.upper() == "BUY":  # 롱 포지션
+                take_profit_price = entry_price * (1 + price_tp_rate / 100)
+                stop_loss_price = entry_price * (1 - price_sl_rate / 100)
+            else:  # 숏 포지션
+                take_profit_price = entry_price * (1 - price_tp_rate / 100)
+                stop_loss_price = entry_price * (1 + price_sl_rate / 100)
+            
+            result = {
+                'take_profit': round(take_profit_price, 2),
+                'stop_loss': round(stop_loss_price, 2)
+            }
+            
+            logger.info(f"📊 TP/SL calculated for {side} at {entry_price} with {leverage}x leverage:")
+            logger.info(f"  Take Profit: {result['take_profit']} ({tp_percentage}% profit)")
+            logger.info(f"  Stop Loss: {result['stop_loss']} ({sl_percentage}% loss)")
+            
+            return result
+            
+        except Exception as e:
+            logger.error(f"Failed to calculate TP/SL: {e}")
+            return {'take_profit': None, 'stop_loss': None}
+    
+    def place_vst_order_with_percentage_tp_sl(self, symbol: str, side: str, quantity: float, 
+                                            tp_percentage: float = 10.0, sl_percentage: float = 5.0,
+                                            leverage: float = 10.0, order_type: str = "MARKET") -> Dict:
+        """
+        레버리지 기반 TP/SL과 함께 VST 주문 생성
+        
+        Args:
+            symbol: 거래 심볼
+            side: 거래 방향 ("BUY" or "SELL")  
+            quantity: 주문 수량
+            tp_percentage: 익절 퍼센테지 (기본 10%)
+            sl_percentage: 손절 퍼센테지 (기본 5%)
+            leverage: 레버리지 배수 (기본 10배)
+            order_type: 주문 타입 (기본 시장가)
+            
+        Returns:
+            주문 결과
+        """
+        try:
+            # 현재 시장가 조회
+            ticker = self.get_ticker_24hr(symbol)
+            if not ticker or 'lastPrice' not in ticker:
+                logger.error(f"Failed to get market price for {symbol}")
+                return {'error': 'Failed to get market price'}
+            
+            current_price = float(ticker['lastPrice'])
+            logger.info(f"💰 Current market price for {symbol}: {current_price}")
+            
+            # TP/SL 가격 계산
+            tp_sl_prices = self.calculate_tp_sl_with_leverage(
+                current_price, side, tp_percentage, sl_percentage, leverage
+            )
+            
+            if not tp_sl_prices['take_profit'] or not tp_sl_prices['stop_loss']:
+                logger.error("Failed to calculate TP/SL prices")
+                return {'error': 'TP/SL calculation failed'}
+            
+            # TP/SL과 함께 주문 생성
+            position_side = "LONG" if side.upper() == "BUY" else "SHORT"
+            
+            result = self.place_vst_order(
+                symbol=symbol,
+                side=side,
+                order_type=order_type,
+                quantity=quantity,
+                position_side=position_side,
+                take_profit=tp_sl_prices['take_profit'],
+                stop_loss=tp_sl_prices['stop_loss']
+            )
+            
+            if result.get('code') == 0:
+                logger.info(f"🎯 VST order with TP/SL placed successfully!")
+                logger.info(f"📈 Entry: {current_price}, TP: {tp_sl_prices['take_profit']}, SL: {tp_sl_prices['stop_loss']}")
+            
+            return result
+            
+        except Exception as e:
+            logger.error(f"Failed to place VST order with TP/SL: {e}")
+            return {'error': str(e)}
+    
+    def place_simple_order_with_percentage_tp_sl(self, symbol: str, side: str, quantity: float,
+                                                tp_rate: float = 0.1, sl_rate: float = 0.05) -> Dict:
+        """
+        퍼센테지 TP/SL과 함께 간단한 VST 주문 생성
+        
+        Args:
+            symbol: 거래 심볼 (예: BTC-USDT)
+            side: 거래 방향 ("BUY" or "SELL")
+            quantity: 주문 수량
+            tp_rate: Take Profit 비율 (0.1 = 10%)
+            sl_rate: Stop Loss 비율 (0.05 = 5%)
+            
+        Returns:
+            주문 결과
+        """
+        try:
+            logger.info(f"🎯 퍼센테지 TP/SL 주문: {symbol} {side} {quantity}")
+            logger.info(f"📊 TP: {tp_rate*100}%, SL: {sl_rate*100}%")
+            
+            # BingX 퍼센테지 TP/SL 주문
+            result = self.place_vst_order(
+                symbol=symbol,
+                side=side,
+                order_type="MARKET",
+                quantity=quantity,
+                position_side="LONG" if side.upper() == "BUY" else "SHORT",
+                take_profit=tp_rate,  # 퍼센테지 (0.1 = 10%)
+                stop_loss=sl_rate     # 퍼센테지 (0.05 = 5%)
+            )
+            
+            logger.info(f"✅ 퍼센테지 TP/SL 주문 결과: {result}")
+            return result
+            
+        except Exception as e:
+            logger.error(f"Failed to place percentage TP/SL order: {e}")
             return {'error': str(e)}
     
     def cancel_vst_order(self, symbol: str, order_id: str = None, client_order_id: str = None) -> Dict:

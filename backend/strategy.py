@@ -45,7 +45,53 @@ def calculate_stochastic_oscillator(df, k_window=14, d_window=3):
     
     return df
 
+async def generate_cci_signals_external(ohlcv_data, symbol, window=20, buy_threshold=-100, sell_threshold=100):
+    """외부 CCI 지표를 사용한 신호 생성 (TAAPI.IO)"""
+    from external_cci_client import HybridCCIClient
+    
+    df = pd.DataFrame(ohlcv_data, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+    
+    # 하이브리드 CCI 클라이언트 초기화
+    cci_client = HybridCCIClient()
+    
+    # 외부 CCI 값 가져오기 (실패 시 내부 계산으로 백업)
+    current_cci = await cci_client.get_cci_value(
+        symbol=symbol,
+        ohlcv_data=ohlcv_data,
+        exchange="binance",  # BingX보다 Binance가 더 안정적
+        interval="5m",
+        period=window
+    )
+    
+    if current_cci is None:
+        print(f"❌ CCI 값을 가져올 수 없습니다: {symbol}")
+        return pd.DataFrame({'signal': [0] * len(df)}, index=df.index)
+    
+    # 이전 CCI 값을 위해 내부 계산 사용 (크로스오버 감지를 위함)
+    df['cci'] = calculate_cci(df['high'], df['low'], df['close'], window)
+    
+    signals = pd.DataFrame(index=df.index)
+    signals['signal'] = 0
+    
+    # 최신 캔들에서만 신호 확인 (현재 CCI 값 사용)
+    if len(df) >= 2:
+        last_idx = len(df) - 1
+        prev_cci = df['cci'].iloc[last_idx-1] if not pd.isna(df['cci'].iloc[last_idx-1]) else 0
+        
+        # 매수 신호: CCI가 -100 아래에서 -100 위로 상향 돌파
+        if prev_cci < buy_threshold and current_cci >= buy_threshold:
+            signals.iloc[last_idx, signals.columns.get_loc('signal')] = 1
+            print(f"📈 CCI 매수 신호: {symbol} (이전: {prev_cci:.2f} → 현재: {current_cci:.2f})")
+            
+        # 매도 신호: CCI가 +100 위에서 +100 아래로 하향 돌파  
+        elif prev_cci > sell_threshold and current_cci <= sell_threshold:
+            signals.iloc[last_idx, signals.columns.get_loc('signal')] = -1
+            print(f"📉 CCI 매도 신호: {symbol} (이전: {prev_cci:.2f} → 현재: {current_cci:.2f})")
+    
+    return signals
+
 def generate_cci_signals(ohlcv_data, window=20, buy_threshold=-100, sell_threshold=100):
+    """기존 내부 CCI 계산을 사용한 신호 생성 (백업용)"""
     df = pd.DataFrame(ohlcv_data, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
     df['cci'] = calculate_cci(df['high'], df['low'], df['close'], window)
 

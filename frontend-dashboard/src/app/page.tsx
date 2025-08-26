@@ -60,7 +60,7 @@ export default function Home() {
   const fetchPortfolioStats = async () => {
     try {
       // Use new combined VST portfolio endpoint for better performance
-      const portfolioResponse = await fetchWithAuth('http://127.0.0.1:8001/vst/portfolio');
+      const portfolioResponse = await fetchWithAuth('http://127.0.0.1:8000/vst/portfolio');
       
       if (portfolioResponse.ok) {
         const portfolioData = await portfolioResponse.json();
@@ -97,7 +97,7 @@ export default function Home() {
         setPortfolioStats(portfolioStats);
       } else {
         // Fallback to original portfolio stats if VST is not available
-        const fallbackResponse = await fetchWithAuth('http://127.0.0.1:8001/portfolio/stats');
+        const fallbackResponse = await fetchWithAuth('http://127.0.0.1:8000/portfolio/stats');
         if (fallbackResponse.ok) {
           const fallbackData = await fallbackResponse.json();
           setPortfolioStats({...fallbackData, is_vst_data: false});
@@ -115,7 +115,7 @@ export default function Home() {
   // Button handlers
   const handleDemoTrading = async () => {
     try {
-      const response = await fetchWithAuth('http://127.0.0.1:8001/demo/initialize', { method: 'POST' });
+      const response = await fetchWithAuth('http://127.0.0.1:8000/demo/initialize', { method: 'POST' });
       if (response.ok) {
         alert('🚀 Demo Trading 시작! BingX VST 모드로 가상 거래를 시작합니다.');
       } else {
@@ -129,7 +129,7 @@ export default function Home() {
   const handleTestOrder = async () => {
     try {
       // BingX VST 실제 데모 주문 API 사용
-      const response = await fetchWithAuth('http://127.0.0.1:8001/vst/orders?symbol=BTC-USDT&side=BUY&order_type=MARKET&quantity=0.001', {
+      const response = await fetchWithAuth('http://127.0.0.1:8000/vst/orders?symbol=BTC-USDT&side=BUY&order_type=MARKET&quantity=0.001', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' }
       });
@@ -150,7 +150,7 @@ export default function Home() {
 
   const handleVSTStatus = async () => {
     try {
-      const response = await fetchWithAuth('http://127.0.0.1:8001/vst/status');
+      const response = await fetchWithAuth('http://127.0.0.1:8000/vst/status');
       if (response.ok) {
         const data = await response.json();
         const status = data.connected ? '연결됨' : '연결 끊김';
@@ -166,7 +166,7 @@ export default function Home() {
 
   const handleVSTBalance = async () => {
     try {
-      const response = await fetchWithAuth('http://127.0.0.1:8001/vst/balance');
+      const response = await fetchWithAuth('http://127.0.0.1:8000/vst/balance');
       if (response.ok) {
         const data = await response.json();
         const balance = data.account_info?.vst_balance || 0;
@@ -205,7 +205,7 @@ export default function Home() {
           params.append(key, (backtestParams as any)[key].toString());
         }
       }
-      const response = await fetchWithAuth(`http://127.0.0.1:8001/backtest/${backtestParams.exchange_id}/${backtestParams.symbol}?${params.toString()}`);
+      const response = await fetchWithAuth(`http://127.0.0.1:8000/backtest/${backtestParams.exchange_id}/${backtestParams.symbol}?${params.toString()}`);
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
@@ -222,7 +222,7 @@ export default function Home() {
 
   const handleActivateStrategy = async (strategyId: number, exchangeName: string, symbol: string, allocatedCapital: number) => {
     try {
-      const response = await fetchWithAuth('http://127.0.0.1:8001/trading/activate', {
+      const response = await fetchWithAuth('http://127.0.0.1:8000/trading/activate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -249,7 +249,7 @@ export default function Home() {
     setLoadingExchanges(true);
     setFetchError(null);
     try {
-      const response = await fetchWithAuth('http://127.0.0.1:8001/exchanges');
+      const response = await fetchWithAuth('http://127.0.0.1:8000/exchanges');
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
@@ -267,7 +267,7 @@ export default function Home() {
     setLoadingSymbols(true);
     setFetchError(null);
     try {
-      const response = await fetchWithAuth(`http://127.0.0.1:8001/symbols/${backtestParams.exchange_id}`);
+      const response = await fetchWithAuth(`http://127.0.0.1:8000/symbols/${backtestParams.exchange_id}`);
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
@@ -288,7 +288,7 @@ export default function Home() {
     setLoadingTicker(true);
     setFetchError(null);
     try {
-      const response = await fetchWithAuth(`http://127.0.0.1:8001/ticker/${backtestParams.exchange_id}/${backtestParams.symbol}`);
+      const response = await fetchWithAuth(`http://127.0.0.1:8000/ticker/${backtestParams.exchange_id}/${backtestParams.symbol}`);
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
@@ -304,7 +304,7 @@ export default function Home() {
   const fetchActiveStrategies = async () => {
     setLoadingStrategies(true);
     try {
-      const response = await fetchWithAuth('http://127.0.0.1:8001/trading/active');
+      const response = await fetchWithAuth('http://127.0.0.1:8000/trading/active');
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
@@ -321,7 +321,7 @@ export default function Home() {
   const fetchCCIData = async () => {
     setLoadingCci(true);
     try {
-      const response = await fetchWithAuth(`http://127.0.0.1:8001/indicators/cci/BTC-USDT?timeframe=${chartTimeframe}&limit=50&window=${cciPeriod}&method=${cciMethod}`);
+      const response = await fetchWithAuth(`http://127.0.0.1:8000/indicators/cci/BTC-USDT?timeframe=${chartTimeframe}&limit=50&window=${cciPeriod}&method=${cciMethod}`);
       if (response.ok) {
         const data = await response.json();
         setCciData(data);
