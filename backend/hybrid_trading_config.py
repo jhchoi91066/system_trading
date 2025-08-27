@@ -39,7 +39,7 @@ class HybridConfig:
     conflict_resolution: str = "priority"  # "priority", "consensus", "first_win"
     
     # 신호 쿨다운 (초) - TradingView 신호는 즉시 처리
-    signal_cooldown: int = 30   # 30초 (중복 신호만 방지)
+    signal_cooldown: int = 5   # 5초 (매우 짧은 쿨다운으로 즉시 처리)
     
     # 최소 확신도 (0.0 ~ 1.0)
     min_confidence: float = 0.7

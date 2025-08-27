@@ -98,7 +98,7 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({ children }
     }
 
     try {
-      ws.current = new WebSocket('ws://127.0.0.1:8000/ws/monitoring');
+      ws.current = new WebSocket('ws://127.0.0.1:8002/ws/monitoring');
       const currentWs = ws.current;
 
       currentWs.onopen = () => {

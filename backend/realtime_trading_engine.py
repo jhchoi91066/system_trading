@@ -1248,8 +1248,88 @@ class RealtimeTradingEngine:
                 logger.warning("VST 클라이언트를 사용할 수 없습니다")
                 
         except Exception as e:
-            logger.error(f"동적 레버리지 TP/SL 설정 실패: {e}")
+            logger.error(f"동적 레버리지 TP/SL 설정 실패 ({symbol}): {e}")
+            import traceback
+            logger.error(f"TP/SL 설정 오류 상세: {traceback.format_exc()}")
+            
+            # 기본 TP/SL 시도 (모든 심볼에 대해 동일하게)
+            try:
+                logger.info(f"🔄 {symbol} 기본 TP/SL 설정 재시도...")
+                await self._setup_fallback_tp_sl(adapter, symbol, position, entry_price, quantity, side, strategy_config)
+            except Exception as fallback_error:
+                logger.error(f"기본 TP/SL 설정도 실패 ({symbol}): {fallback_error}")
+                
             logger.info("메인 주문은 성공적으로 실행됨")
+    
+    async def _setup_fallback_tp_sl(self, adapter, symbol: str, position, entry_price: float, 
+                                   quantity: float, side: str, strategy_config: Dict):
+        """모든 심볼에 대해 동일한 기본 TP/SL 설정 (fallback)"""
+        try:
+            logger.info(f"🔄 {symbol} 기본 TP/SL 설정 시작...")
+            
+            if hasattr(adapter, 'client'):
+                vst_client = adapter.client
+                bingx_symbol = symbol.replace('/', '-')
+                
+                # 기본 설정값 (모든 심볼 동일)
+                default_leverage = 25.0  # VST 계정 기본 레버리지
+                tp_percentage = strategy_config.get('take_profit_pct', 10.0)  
+                sl_percentage = strategy_config.get('stop_loss_pct', 5.0)
+                
+                logger.info(f"📊 기본 레버리지 적용: {default_leverage}x")
+                logger.info(f"🎯 목표 TP: {tp_percentage}%, SL: {sl_percentage}%")
+                
+                # 기본 TP/SL 가격 계산
+                tp_sl_prices = vst_client.calculate_tp_sl_with_leverage(
+                    entry_price, side.upper(), tp_percentage, sl_percentage, default_leverage
+                )
+                
+                if tp_sl_prices['take_profit'] and tp_sl_prices['stop_loss']:
+                    position_side = "LONG" if side.upper() == "BUY" else "SHORT"
+                    close_side = "SELL" if side.upper() == "BUY" else "BUY"
+                    order_quantity = max(quantity, 0.0001)
+                    
+                    logger.info(f"💰 {symbol} 기본 TP/SL 주문:")
+                    logger.info(f"  진입가: {entry_price}")
+                    logger.info(f"  TP: {tp_sl_prices['take_profit']}")
+                    logger.info(f"  SL: {tp_sl_prices['stop_loss']}")
+                    
+                    # TP 주문 시도
+                    try:
+                        tp_order = vst_client.place_vst_order(
+                            symbol=bingx_symbol,
+                            side=close_side,
+                            order_type="TAKE_PROFIT_MARKET",
+                            quantity=order_quantity,
+                            position_side=position_side,
+                            stop_price=tp_sl_prices['take_profit']
+                        )
+                        logger.info(f"✅ {symbol} TP 주문 성공: {tp_order.get('code', 'N/A')}")
+                    except Exception as tp_error:
+                        logger.error(f"❌ {symbol} TP 주문 실패: {tp_error}")
+                    
+                    # SL 주문 시도  
+                    try:
+                        sl_order = vst_client.place_vst_order(
+                            symbol=bingx_symbol,
+                            side=close_side,
+                            order_type="STOP_MARKET",
+                            quantity=order_quantity,
+                            position_side=position_side,
+                            stop_price=tp_sl_prices['stop_loss']
+                        )
+                        logger.info(f"✅ {symbol} SL 주문 성공: {sl_order.get('code', 'N/A')}")
+                    except Exception as sl_error:
+                        logger.error(f"❌ {symbol} SL 주문 실패: {sl_error}")
+                    
+                    logger.info(f"🔄 {symbol} 기본 TP/SL 설정 완료")
+                else:
+                    logger.error(f"❌ {symbol} TP/SL 가격 계산 실패")
+            else:
+                logger.error(f"❌ {symbol} VST 클라이언트 없음")
+                
+        except Exception as e:
+            logger.error(f"❌ {symbol} 기본 TP/SL 설정 실패: {e}")
     
     async def _check_advanced_tp_sl(self, user_id: str, exchange_name: str, symbol: str, vst_position: dict, current_price: float, pnl_percentage: float) -> bool:
         """

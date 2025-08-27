@@ -389,11 +389,12 @@ class TradingViewWebhook:
                     'strategy_type': 'TradingView',
                     'parameters': {},
                     'is_active': True,
+                    # 고정 마진 200 USDT 설정
+                    'allocated_capital': 200,        # 고정 거래 마진: 200 USDT
                     # 레버리지 기반 TP/SL 설정
-                    'take_profit_percentage': 10.0,  # 10% 수익률
-                    'stop_loss_percentage': 5.0,     # 5% 손실률  
-                    'leverage': 10.0,                # 10배 레버리지
-                    'allocated_capital': 100.0       # 100 USDT 할당
+                    'take_profit_pct': 10.0,         # 10% 수익률
+                    'stop_loss_pct': 5.0,           # 5% 손실률
+                    'position_sizing_method': 'fixed_amount'  # 고정 금액 방식
                 }
             )
             
