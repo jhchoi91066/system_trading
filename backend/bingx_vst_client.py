@@ -9,6 +9,8 @@ import hmac
 import hashlib
 import time
 import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 import json
 import asyncio
 import aiohttp
@@ -53,15 +55,39 @@ class BingXVSTClient:
             "https://open-api.bingx.com"  # 실제 거래 도메인
         ]
         
-        # API 요청 제한
+        # 레이트 리미트 관리
         self.rate_limit_delay = 0.1  # 100ms 지연
+        self.max_requests_per_minute = 100  # 분당 최대 요청
+        self.request_timestamps = []  # 요청 타임스탬프 기록
         
-        # 세션 생성
+        # 세션 생성 및 연결 풀 최적화
         self.session = requests.Session()
+        
+        # HTTP 어댑터 설정 (재시도, 연결 풀 최적화)
+        retry_strategy = Retry(
+            total=3,
+            backoff_factor=0.3,
+            status_forcelist=[429, 500, 502, 503, 504],
+            allowed_methods=["HEAD", "GET", "POST", "PUT", "DELETE", "OPTIONS", "TRACE"]
+        )
+        
+        adapter = HTTPAdapter(
+            max_retries=retry_strategy,
+            pool_connections=10,  # 연결 풀 크기
+            pool_maxsize=20      # 최대 연결 수
+        )
+        
+        self.session.mount('https://', adapter)
+        self.session.mount('http://', adapter)
+        
+        # 헤더 및 타임아웃 설정
         self.session.headers.update({
             'Content-Type': 'application/json',
             'User-Agent': 'BingX-VST-Python-Client'
         })
+        
+        # 연결 및 읽기 타임아웃 설정
+        self.session.timeout = (5, 30)  # 연결 5초, 읽기 30초
         
         logger.info("🎮 BingX VST (Virtual Simulated Trading) Client initialized - Demo Mode")
     
@@ -103,8 +129,85 @@ class BingXVSTClient:
         return signature
     
     def _get_timestamp(self) -> str:
-        """현재 타임스탬프 반환 (밀리초)"""
-        return str(int(time.time() * 1000))
+        """서버 시간과 동기화된 타임스탬프 반환 (밀리초)"""
+        try:
+            # 서버 시간 동기화 (첫 요청 시에만)
+            if not hasattr(self, '_server_time_offset'):
+                self._sync_server_time()
+            
+            # 로컬 시간 + 서버 오프셋
+            local_time = int(time.time() * 1000)
+            return str(local_time + self._server_time_offset)
+        except Exception as e:
+            logger.warning(f"Timestamp sync failed, using local time: {e}")
+            return str(int(time.time() * 1000))
+    
+    def _sync_server_time(self):
+        """BingX 서버 시간과 동기화"""
+        try:
+            # 서버 시간 조회
+            response = self.session.get('https://open-api.bingx.com/openApi/swap/v2/server/time', timeout=5)
+            if response.status_code == 200:
+                server_data = response.json()
+                server_time = server_data.get('timestamp', 0)
+                local_time = int(time.time() * 1000)
+                self._server_time_offset = server_time - local_time
+                logger.info(f"📡 Server time synchronized: offset={self._server_time_offset}ms")
+            else:
+                self._server_time_offset = 0
+        except Exception as e:
+            logger.warning(f"Server time sync failed: {e}")
+            self._server_time_offset = 0
+    
+    def _check_rate_limit(self):
+        """레이트 리미트 체크 및 대기"""
+        now = time.time()
+        
+        # 1분 이전의 요청들 제거
+        self.request_timestamps = [ts for ts in self.request_timestamps if now - ts < 60]
+        
+        # 요청 수 체크
+        if len(self.request_timestamps) >= self.max_requests_per_minute:
+            # 가장 오래된 요청으로부터 1분 후까지 대기
+            sleep_time = 60 - (now - self.request_timestamps[0])
+            if sleep_time > 0:
+                logger.warning(f"⏳ Rate limit reached, sleeping for {sleep_time:.2f} seconds")
+                time.sleep(sleep_time)
+                
+        # 현재 요청 타임스탬프 기록
+        self.request_timestamps.append(now)
+        
+        # 기본 지연
+        if self.rate_limit_delay > 0:
+            time.sleep(self.rate_limit_delay)
+    
+    def _make_request_with_retry(self, method: str, endpoint: str, params: Dict = None, signed: bool = True, use_public_api: bool = False, max_retries: int = 3) -> Dict:
+        """타임스탬프 오류 시 자동 재시도하는 API 요청"""
+        for attempt in range(max_retries):
+            try:
+                result = self._make_request(method, endpoint, params, signed, use_public_api)
+                
+                # 타임스탬프 오류인 경우 재시도
+                if result.get('code') == 100421:  # Timestamp mismatch error
+                    if attempt < max_retries - 1:
+                        logger.warning(f"🔄 Timestamp error, retrying... ({attempt + 1}/{max_retries})")
+                        # 서버 시간 재동기화
+                        self._sync_server_time()
+                        time.sleep(0.5)  # 짧은 대기
+                        continue
+                    else:
+                        logger.error("❌ Max timestamp retry attempts reached")
+                
+                return result
+                
+            except Exception as e:
+                if attempt < max_retries - 1:
+                    logger.warning(f"⚠️ Request failed, retrying... ({attempt + 1}/{max_retries}): {e}")
+                    time.sleep(1)
+                    continue
+                raise e
+        
+        return result
     
     def _make_request(self, method: str, endpoint: str, params: Dict = None, signed: bool = True, use_public_api: bool = False) -> Dict:
         """
@@ -121,6 +224,9 @@ class BingXVSTClient:
         """
         # 🛡️ 요청 전 안전 검증
         self._validate_vst_demo_only()
+        
+        # 레이트 리미트 체크
+        self._check_rate_limit()
         
         if params is None:
             params = {}
@@ -411,7 +517,7 @@ class BingXVSTClient:
             if order_type.upper() == 'LIMIT':
                 params['timeInForce'] = time_in_force
             
-            result = self._make_request("POST", "/openApi/swap/v2/trade/order", params)
+            result = self._make_request_with_retry("POST", "/openApi/swap/v2/trade/order", params)
             
             # VST 데모 주문 성공 로깅
             if result.get('code') == 0:

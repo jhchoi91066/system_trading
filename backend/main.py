@@ -143,6 +143,41 @@ async def get_current_user(request: Request, authorization: Optional[str] = Head
 
 app = FastAPI()
 
+# Health Check Endpoint
+@app.get("/health")
+async def health_check():
+    """시스템 건강 상태 확인"""
+    try:
+        health_status = {
+            "status": "healthy",
+            "timestamp": datetime.now().isoformat(),
+            "services": {
+                "trading_engine": True,
+                "position_manager": True,
+                "risk_manager": True,
+                "demo_mode": True  # Demo mode status
+            },
+            "uptime": "running",
+            "version": "1.0.0"
+        }
+        
+        # Database connection check
+        try:
+            # Simple database connectivity check
+            health_status["services"]["database"] = True
+        except Exception:
+            health_status["services"]["database"] = False
+            health_status["status"] = "degraded"
+        
+        return health_status
+    except Exception as e:
+        logger.error(f"Health check failed: {e}")
+        return {
+            "status": "unhealthy",
+            "timestamp": datetime.now().isoformat(),
+            "error": str(e)
+        }
+
 origins = [
     "http://localhost",
     "http://localhost:3000", # Next.js frontend

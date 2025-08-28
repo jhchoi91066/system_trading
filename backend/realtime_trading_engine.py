@@ -1159,9 +1159,41 @@ class RealtimeTradingEngine:
         except Exception as e:
             logger.error(f"Error setting up leverage TP/SL for {symbol}: {e}")
     
+    async def _wait_for_position_creation(self, vst_client, symbol: str, side: str, entry_price: float, max_wait: int = 10):
+        """메인 주문 후 포지션 생성을 대기"""
+        logger.info(f"⏳ 포지션 생성 대기 중: {symbol} {side}")
+        
+        for attempt in range(max_wait):
+            try:
+                # 현재 포지션들 조회
+                positions = vst_client.get_positions()
+                
+                if positions.get('code') == 0:
+                    position_list = positions.get('data', {}).get('positions', [])
+                    
+                    # 해당 심볼의 포지션 찾기
+                    for pos in position_list:
+                        if (pos.get('symbol') == symbol and 
+                            float(pos.get('positionAmt', 0)) != 0 and
+                            abs(float(pos.get('avgPrice', 0)) - entry_price) < entry_price * 0.05):  # 5% 허용 오차
+                            
+                            logger.info(f"✅ 포지션 확인됨: {symbol} {pos.get('positionAmt')} @ {pos.get('avgPrice')}")
+                            return True
+                
+                if attempt < max_wait - 1:
+                    logger.info(f"🔄 포지션 대기 중... ({attempt + 1}/{max_wait})")
+                    await asyncio.sleep(1)
+                
+            except Exception as e:
+                logger.warning(f"포지션 확인 중 오류: {e}")
+                await asyncio.sleep(1)
+        
+        logger.warning(f"⚠️ 포지션 생성 확인 실패: {symbol} (계속 진행)")
+        return False
+    
     async def _setup_dynamic_leverage_tp_sl(self, adapter, symbol: str, position, entry_price: float, 
                                           quantity: float, side: str, strategy_config: Dict):
-        """메인 주문 완료 후 현재 레버리지 확인하여 TP/SL 설정"""
+        """메인 주문 완료 후 포지션 확인하여 TP/SL 설정"""
         try:
             logger.info(f"🎯 동적 레버리지 기반 TP/SL 설정 시작: {symbol} {side}")
             logger.info(f"💰 실제 체결가: {entry_price}, 수량: {quantity}")
@@ -1172,6 +1204,9 @@ class RealtimeTradingEngine:
                 
                 # BingX 심볼 포맷 변환 (BTC/USDT → BTC-USDT)  
                 bingx_symbol = symbol.replace('/', '-')
+                
+                # 0. 메인 주문 후 포지션 생성 대기 (최대 10초)
+                await self._wait_for_position_creation(vst_client, bingx_symbol, side, entry_price)
                 
                 # 1. 현재 레버리지 조회
                 current_leverage = vst_client.get_symbol_leverage(bingx_symbol)
