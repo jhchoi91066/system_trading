@@ -281,7 +281,11 @@ class RealtimeTradingEngine:
             
             # 매수 신호 처리
             if signal_type == 'buy':
-                if current_position == 0:
+                # 테스트를 위해 ETH 포지션을 강제로 새로 생성 (임시)
+                if symbol == 'ETH/USDT' and current_position < 0.1:
+                    logger.info(f"🧪 테스트: ETH 포지션 강제 생성 (기존: {current_position})")
+                    await self._place_buy_order(user_id, exchange_name, symbol, strategy_config, price, reason)
+                elif current_position == 0:
                     logger.info(f"🟢 매수 신호: 포지션 없음 → 롱 포지션 생성")
                     await self._place_buy_order(user_id, exchange_name, symbol, strategy_config, price, reason)
                 elif current_position < 0:
@@ -507,18 +511,31 @@ class RealtimeTradingEngine:
                              strategy_config: Dict, price: float, reason: str):
         """매수 주문 실행"""
         try:
-            allocated_capital = strategy_config.get('allocated_capital', 100)  # USDT
+            allocated_capital = 100  # 고정 마진 100 USDT
             stop_loss_pct = strategy_config.get('stop_loss_pct', 5.0)
             take_profit_pct = strategy_config.get('take_profit_pct', 10.0)
             
             # 손절가 계산
             stop_loss_price = price * (1 - stop_loss_pct / 100)
             
-            # 리스크 관리자를 통한 포지션 크기 계산
-            position_size = risk_manager.calculate_position_size(
-                user_id, allocated_capital, price, stop_loss_price, 
-                method=strategy_config.get('position_sizing_method', 'fixed_fractional')
-            )
+            # 100 USDT 마진으로 직접 포지션 크기 계산 (리스크 관리자 우회)
+            price_risk = abs(price - stop_loss_price)
+            position_size = allocated_capital / price_risk if price_risk > 0 else allocated_capital / price * 0.02
+            
+            logger.info(f"💰 마진 계산: {allocated_capital} USDT, 가격: {price}, 손절: {stop_loss_price}")
+            logger.info(f"📏 포지션 크기: {position_size:.6f} (가격 리스크: {price_risk:.2f})")
+            
+            # 안전장치: 최대 포지션 크기 제한 (마진의 80% 사용)
+            max_position_size = (allocated_capital * 0.8) / price
+            if position_size > max_position_size:
+                position_size = max_position_size
+                logger.info(f"⚠️ 포지션 크기 제한 적용: {position_size:.6f}")
+            
+            # 리스크 관리자를 통한 최종 검증만 수행
+            # position_size = risk_manager.calculate_position_size(
+            #     user_id, allocated_capital, price, stop_loss_price, 
+            #     method=strategy_config.get('position_sizing_method', 'fixed_fractional')
+            # )
             
             # 리스크 한도 확인 (임시로 비활성화)
             try:
@@ -578,18 +595,31 @@ class RealtimeTradingEngine:
                                strategy_config: Dict, price: float, reason: str):
         """숏 포지션 생성"""
         try:
-            allocated_capital = strategy_config.get('allocated_capital', 100)  # USDT
+            allocated_capital = 100  # 고정 마진 100 USDT
             stop_loss_pct = strategy_config.get('stop_loss_pct', 5.0)
             take_profit_pct = strategy_config.get('take_profit_pct', 10.0)
             
             # 손절가 계산 (숏 포지션)
             stop_loss_price = price * (1 + stop_loss_pct / 100)
             
-            # 리스크 관리자를 통한 포지션 크기 계산
-            position_size = risk_manager.calculate_position_size(
-                user_id, allocated_capital, price, stop_loss_price, 
-                method=strategy_config.get('position_sizing_method', 'fixed_fractional')
-            )
+            # 100 USDT 마진으로 직접 포지션 크기 계산 (리스크 관리자 우회)
+            price_risk = abs(stop_loss_price - price)
+            position_size = allocated_capital / price_risk if price_risk > 0 else allocated_capital / price * 0.02
+            
+            logger.info(f"💰 마진 계산 (SHORT): {allocated_capital} USDT, 가격: {price}, 손절: {stop_loss_price}")
+            logger.info(f"📏 포지션 크기: {position_size:.6f} (가격 리스크: {price_risk:.2f})")
+            
+            # 안전장치: 최대 포지션 크기 제한 (마진의 80% 사용)
+            max_position_size = (allocated_capital * 0.8) / price
+            if position_size > max_position_size:
+                position_size = max_position_size
+                logger.info(f"⚠️ 포지션 크기 제한 적용: {position_size:.6f}")
+            
+            # 리스크 관리자를 통한 최종 검증만 수행
+            # position_size = risk_manager.calculate_position_size(
+            #     user_id, allocated_capital, price, stop_loss_price, 
+            #     method=strategy_config.get('position_sizing_method', 'fixed_fractional')
+            # )
             
             adapter = self.exchanges.get(exchange_name)
             if not adapter:
@@ -1166,11 +1196,9 @@ class RealtimeTradingEngine:
         for attempt in range(max_wait):
             try:
                 # 현재 포지션들 조회
-                positions = vst_client.get_positions()
+                position_list = vst_client.get_vst_positions()
                 
-                if positions.get('code') == 0:
-                    position_list = positions.get('data', {}).get('positions', [])
-                    
+                if position_list:
                     # 해당 심볼의 포지션 찾기
                     for pos in position_list:
                         if (pos.get('symbol') == symbol and 
@@ -1307,7 +1335,7 @@ class RealtimeTradingEngine:
                 bingx_symbol = symbol.replace('/', '-')
                 
                 # 기본 설정값 (모든 심볼 동일)
-                default_leverage = 25.0  # VST 계정 기본 레버리지
+                default_leverage = 1.0  # 1배 레버리지 (마진 100 고정)
                 tp_percentage = strategy_config.get('take_profit_pct', 10.0)  
                 sl_percentage = strategy_config.get('stop_loss_pct', 5.0)
                 

@@ -10,6 +10,12 @@ export default function MonitoringPage() {
   const [ethInterval, setEthInterval] = useState<string>('1h');
   const [vstPortfolioStats, setVstPortfolioStats] = useState<any>(null);
   const [loading, setLoading] = useState(false);
+  
+  // 고급 기능 상태
+  const [advancedAnalytics, setAdvancedAnalytics] = useState<any>(null);
+  const [advancedFeaturesEnabled, setAdvancedFeaturesEnabled] = useState(false);
+  const [realTimeIndicators, setRealTimeIndicators] = useState<any>(null);
+  
   const { data, isConnected: wsConnected, error: wsError, sendMessage } = useWebSocket();
   const { portfolio_stats: portfolioStats, active_strategies: activeStrategies, performance_data: performanceData } = data;
 
@@ -71,13 +77,60 @@ export default function MonitoringPage() {
     
     // VST 데이터 초기 로드
     fetchVSTPortfolioData();
+    checkAdvancedFeatures();
   }, [wsConnected, data]); // Update timestamp when connection status or data changes
 
   // 5초마다 VST 데이터 업데이트
   useEffect(() => {
-    const interval = setInterval(fetchVSTPortfolioData, 5000);
+    const interval = setInterval(() => {
+      fetchVSTPortfolioData();
+      if (advancedFeaturesEnabled) {
+        fetchAdvancedAnalytics();
+        fetchRealTimeIndicators();
+      }
+    }, 5000);
     return () => clearInterval(interval);
-  }, []);
+  }, [advancedFeaturesEnabled]);
+
+  const checkAdvancedFeatures = async () => {
+    try {
+      const response = await fetch('http://127.0.0.1:8000/advanced/status');
+      if (response.ok) {
+        const data = await response.json();
+        setAdvancedFeaturesEnabled(data.enabled);
+        if (data.enabled) {
+          fetchAdvancedAnalytics();
+          fetchRealTimeIndicators();
+        }
+      }
+    } catch (e) {
+      console.log('Advanced features not available');
+    }
+  };
+
+  const fetchAdvancedAnalytics = async () => {
+    try {
+      const response = await fetch('http://127.0.0.1:8000/api/analytics/advanced');
+      if (response.ok) {
+        const data = await response.json();
+        setAdvancedAnalytics(data.data);
+      }
+    } catch (e) {
+      console.error('Failed to fetch advanced analytics:', e);
+    }
+  };
+
+  const fetchRealTimeIndicators = async () => {
+    try {
+      const response = await fetch('http://127.0.0.1:8000/api/market/indicators/BTCUSDT');
+      if (response.ok) {
+        const data = await response.json();
+        setRealTimeIndicators(data.data);
+      }
+    } catch (e) {
+      console.error('Failed to fetch real-time indicators:', e);
+    }
+  };
 
   const requestManualUpdate = () => {
     if (wsConnected) {
@@ -140,6 +193,12 @@ export default function MonitoringPage() {
               <span className="text-small text-secondary">
                 {wsConnected ? 'Live Connection' : 'Disconnected'}
               </span>
+              {advancedFeaturesEnabled && (
+                <div className="flex items-center space-x-2">
+                  <div className="w-3 h-3 rounded-full bg-blue-400"></div>
+                  <span className="text-small text-blue-400">Advanced Analytics</span>
+                </div>
+              )}
               {lastUpdateTime && (
                 <span className="text-xs text-gray-400">
                   Last: {lastUpdateTime}
@@ -269,6 +328,141 @@ export default function MonitoringPage() {
                 <p className="text-h4 font-medium text-white">{portfolioStats.active_strategies}</p>
               </div>
             </div>
+          </div>
+        )}
+
+        {/* Advanced Analytics Dashboard */}
+        {advancedFeaturesEnabled && (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
+            {/* Real-time Indicators */}
+            {realTimeIndicators && (
+              <div className="linear-card">
+                <h2 className="text-h3 mb-6">🔬 Advanced Technical Indicators</h2>
+                <div className="space-y-4">
+                  <div className="glass-light p-4 rounded-lg">
+                    <div className="flex justify-between items-center mb-2">
+                      <span className="text-small text-secondary">Composite Signal</span>
+                      <span className={`text-sm font-medium px-2 py-1 rounded ${
+                        realTimeIndicators.composite_signal?.signal === 'BUY' ? 'bg-green-500/20 text-green-400' :
+                        realTimeIndicators.composite_signal?.signal === 'SELL' ? 'bg-red-500/20 text-red-400' :
+                        'bg-gray-500/20 text-gray-400'
+                      }`}>
+                        {realTimeIndicators.composite_signal?.signal || 'NEUTRAL'}
+                      </span>
+                    </div>
+                    <div className="text-xs text-secondary">
+                      Confidence: {(realTimeIndicators.composite_signal?.confidence * 100)?.toFixed(1)}% 
+                      | Strength: {realTimeIndicators.composite_signal?.strength}
+                      | Trend: {realTimeIndicators.composite_signal?.trend}
+                    </div>
+                  </div>
+                  
+                  <div className="grid grid-cols-3 gap-3">
+                    <div className="glass-light p-3 rounded text-center">
+                      <p className="text-xs text-secondary mb-1">CCI</p>
+                      <p className="text-sm font-medium text-white">
+                        {realTimeIndicators.indicators?.cci?.current?.toFixed(1) || 'N/A'}
+                      </p>
+                      <p className={`text-xs ${
+                        realTimeIndicators.indicators?.cci?.signal === 'BUY' ? 'text-green-400' :
+                        realTimeIndicators.indicators?.cci?.signal === 'SELL' ? 'text-red-400' :
+                        'text-gray-400'
+                      }`}>
+                        {realTimeIndicators.indicators?.cci?.signal || 'NEUTRAL'}
+                      </p>
+                    </div>
+                    
+                    <div className="glass-light p-3 rounded text-center">
+                      <p className="text-xs text-secondary mb-1">RSI</p>
+                      <p className="text-sm font-medium text-white">
+                        {realTimeIndicators.indicators?.rsi?.current?.toFixed(1) || 'N/A'}
+                      </p>
+                      <p className={`text-xs ${
+                        realTimeIndicators.indicators?.rsi?.signal === 'BUY' ? 'text-green-400' :
+                        realTimeIndicators.indicators?.rsi?.signal === 'SELL' ? 'text-red-400' :
+                        'text-gray-400'
+                      }`}>
+                        {realTimeIndicators.indicators?.rsi?.signal || 'NEUTRAL'}
+                      </p>
+                    </div>
+                    
+                    <div className="glass-light p-3 rounded text-center">
+                      <p className="text-xs text-secondary mb-1">MACD</p>
+                      <p className="text-sm font-medium text-white">
+                        {realTimeIndicators.indicators?.macd?.current?.toFixed(1) || 'N/A'}
+                      </p>
+                      <p className={`text-xs ${
+                        realTimeIndicators.indicators?.macd?.signal === 'BUY' ? 'text-green-400' :
+                        realTimeIndicators.indicators?.macd?.signal === 'SELL' ? 'text-red-400' :
+                        'text-gray-400'
+                      }`}>
+                        {realTimeIndicators.indicators?.macd?.signal || 'NEUTRAL'}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Advanced Risk Analytics */}
+            {advancedAnalytics && (
+              <div className="linear-card">
+                <h2 className="text-h3 mb-6">📊 Risk Analytics</h2>
+                <div className="space-y-4">
+                  {advancedAnalytics.risk_metrics && (
+                    <div className="glass-light p-4 rounded-lg">
+                      <h4 className="text-small font-medium text-white mb-3">Value at Risk (VaR)</h4>
+                      <div className="grid grid-cols-3 gap-3 text-center">
+                        <div>
+                          <p className="text-xs text-secondary mb-1">VaR 95%</p>
+                          <p className="text-sm font-medium text-red-400">
+                            {advancedAnalytics.risk_metrics.var_95?.toFixed(2)}%
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-xs text-secondary mb-1">VaR 99%</p>
+                          <p className="text-sm font-medium text-red-400">
+                            {advancedAnalytics.risk_metrics.var_99?.toFixed(2)}%
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-xs text-secondary mb-1">CVaR 95%</p>
+                          <p className="text-sm font-medium text-red-400">
+                            {advancedAnalytics.risk_metrics.cvar_95?.toFixed(2)}%
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                  
+                  {advancedAnalytics.portfolio_performance && (
+                    <div className="glass-light p-4 rounded-lg">
+                      <h4 className="text-small font-medium text-white mb-3">Portfolio Performance</h4>
+                      <div className="space-y-2 text-xs">
+                        <div className="flex justify-between">
+                          <span className="text-secondary">Total Return:</span>
+                          <span className="text-green-400">
+                            {advancedAnalytics.portfolio_performance.total_return?.toFixed(2)}%
+                          </span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-secondary">Sharpe Ratio:</span>
+                          <span className="text-blue-400">
+                            {advancedAnalytics.portfolio_performance.sharpe_ratio?.toFixed(3)}
+                          </span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-secondary">Max Drawdown:</span>
+                          <span className="text-red-400">
+                            {advancedAnalytics.portfolio_performance.max_drawdown?.toFixed(2)}%
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
         )}
 

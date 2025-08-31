@@ -1,0 +1,162 @@
+# Prometheus Alert Rules for Production
+# 🚀 Phase 16: Final Production Deployment
+
+groups:
+  - name: trading_bot_alerts
+    rules:
+      # System Health Alerts
+      - alert: HighCPUUsage
+        expr: 100 - (avg by(instance) (irate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 80
+        for: 5m
+        labels:
+          severity: warning
+          service: trading-bot
+        annotations:
+          summary: "High CPU usage detected"
+          description: "CPU usage is above 80% for more than 5 minutes"
+
+      - alert: HighMemoryUsage
+        expr: (node_memory_MemTotal_bytes - node_memory_MemAvailable_bytes) / node_memory_MemTotal_bytes * 100 > 85
+        for: 3m
+        labels:
+          severity: warning
+          service: trading-bot
+        annotations:
+          summary: "High memory usage detected"
+          description: "Memory usage is above 85% for more than 3 minutes"
+
+      - alert: DiskSpaceLow
+        expr: (node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"}) * 100 < 10
+        for: 1m
+        labels:
+          severity: critical
+          service: trading-bot
+        annotations:
+          summary: "Disk space critically low"
+          description: "Available disk space is below 10%"
+
+      # Trading System Alerts
+      - alert: TradingSystemDown
+        expr: up{job="trading-bot"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          service: trading-bot
+        annotations:
+          summary: "Trading system is down"
+          description: "Trading bot application is not responding"
+
+      - alert: HighTradingLatency
+        expr: trading_latency_seconds > 1.0
+        for: 2m
+        labels:
+          severity: warning
+          service: trading-bot
+        annotations:
+          summary: "High trading latency detected"
+          description: "Trading latency is above 1 second"
+
+      - alert: TradingErrorRateHigh
+        expr: rate(trading_errors_total[5m]) > 0.1
+        for: 2m
+        labels:
+          severity: warning
+          service: trading-bot
+        annotations:
+          summary: "High trading error rate"
+          description: "Trading error rate is above 10%"
+
+      - alert: DailyLossLimitApproached
+        expr: daily_pnl_percentage < -4.0
+        for: 1m
+        labels:
+          severity: critical
+          service: trading-bot
+        annotations:
+          summary: "Daily loss limit approached"
+          description: "Daily P&L is approaching the -5% limit"
+
+      # Database Alerts
+      - alert: DatabaseConnectionsHigh
+        expr: pg_stat_activity_count / pg_settings_max_connections * 100 > 80
+        for: 5m
+        labels:
+          severity: warning
+          service: postgres
+        annotations:
+          summary: "High database connection usage"
+          description: "Database connections are above 80% of the limit"
+
+      - alert: DatabaseQuerySlow
+        expr: pg_stat_statements_mean_time_ms > 1000
+        for: 3m
+        labels:
+          severity: warning
+          service: postgres
+        annotations:
+          summary: "Slow database queries detected"
+          description: "Average query execution time is above 1 second"
+
+      # Security Alerts
+      - alert: HighFailedLoginAttempts
+        expr: increase(failed_login_attempts_total[10m]) > 20
+        for: 1m
+        labels:
+          severity: warning
+          service: security
+        annotations:
+          summary: "High number of failed login attempts"
+          description: "More than 20 failed login attempts in 10 minutes"
+
+      - alert: SuspiciousAPIActivity
+        expr: rate(api_requests_total{status=~"4..|5.."}[5m]) > 0.2
+        for: 3m
+        labels:
+          severity: warning
+          service: security
+        annotations:
+          summary: "High API error rate detected"
+          description: "API error rate is above 20%"
+
+      # Business Logic Alerts
+      - alert: NoTradingActivity
+        expr: increase(trades_executed_total[1h]) == 0
+        for: 2h
+        labels:
+          severity: warning
+          service: trading-bot
+        annotations:
+          summary: "No trading activity detected"
+          description: "No trades have been executed in the last 2 hours"
+
+      - alert: PortfolioValueDrop
+        expr: portfolio_value_usd < portfolio_value_usd offset 1h * 0.95
+        for: 5m
+        labels:
+          severity: warning
+          service: trading-bot
+        annotations:
+          summary: "Significant portfolio value drop"
+          description: "Portfolio value has dropped more than 5% in the last hour"
+
+  - name: infrastructure_alerts
+    rules:
+      # Container Health
+      - alert: ContainerDown
+        expr: up == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Container is down"
+          description: "Container {{ $labels.instance }} has been down for more than 1 minute"
+
+      # Network Alerts
+      - alert: HighNetworkTraffic
+        expr: rate(node_network_receive_bytes_total[5m]) > 100000000  # 100MB/s
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High network traffic"
+          description: "Network traffic is above 100MB/s for more than 10 minutes"

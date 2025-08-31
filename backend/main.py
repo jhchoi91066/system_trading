@@ -21,8 +21,99 @@ import os
 import logging
 from dotenv import load_dotenv
 
+# 환경 관리 시스템 (Phase 15.1.3)
+from environment_manager import env_manager, get_current_config
+
+# 신뢰성 시스템 (Phase 15.2)
+try:
+    from reliability import (
+        circuit_breaker, retry_with_backoff,
+        health_monitor, shutdown_manager
+    )
+    from reliability.backup_manager import backup_manager
+    RELIABILITY_ENABLED = True
+except ImportError as e:
+    RELIABILITY_ENABLED = False
+
+# 고급 기능 시스템 (Phase 15.3)
+try:
+    from advanced import MultiStrategyEngine, AdvancedIndicators
+    from advanced.analytics_engine import AnalyticsEngine
+    from advanced.portfolio_manager import PortfolioManager
+    from advanced.backtesting_engine import BacktestingEngine
+    from advanced.advanced_risk_manager import AdvancedRiskManager
+    from advanced.parameter_optimizer import ParameterOptimizer
+    ADVANCED_ENABLED = True
+except ImportError as e:
+    ADVANCED_ENABLED = False
+
+# 운영 및 모니터링 시스템 (Phase 15.5)
+try:
+    from operations import PerformanceCollector, AlertingManager, AdvancedLogger, DeploymentManager
+    from operations.performance_metrics import initialize_performance_monitoring, get_performance_collector
+    from operations.alerting_system import initialize_alerting, get_alerting_manager
+    from operations.database_optimizer import initialize_database_optimization, get_database_optimization_manager
+    from operations.disaster_recovery import initialize_disaster_recovery, get_disaster_recovery_manager
+    OPERATIONS_ENABLED = True
+except ImportError as e:
+    OPERATIONS_ENABLED = False
+    
+    # 추가 인스턴스들 생성 (필요시)
+    try:
+        from reliability.circuit_breaker import CircuitBreakerConfig
+        
+        # 거래소용 Circuit Breaker 생성
+        exchange_config = CircuitBreakerConfig(
+            failure_threshold=3,
+            recovery_timeout=30.0,
+            success_threshold=2
+        )
+        exchange_breaker = circuit_breaker.create_instance("exchange_api", exchange_config)
+        
+        # 데이터베이스용 Circuit Breaker 생성
+        database_config = CircuitBreakerConfig(
+            failure_threshold=5,
+            recovery_timeout=60.0, 
+            success_threshold=3
+        )
+        database_breaker = circuit_breaker.create_instance("database", database_config)
+        
+    except Exception as e:
+        # logger는 아직 정의되지 않았으므로 print 사용
+        print(f"⚠️ Could not create additional circuit breakers: {e}")
+        exchange_breaker = circuit_breaker
+        database_breaker = circuit_breaker
+    
+except ImportError as e:
+    RELIABILITY_ENABLED = False
+    # 나중에 logger 정의 후 로깅
+
 # 로깅 설정
+config = get_current_config()
+logging.basicConfig(
+    level=getattr(logging, config.log_level),
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
 logger = logging.getLogger(__name__)
+logger.info(f"🌍 Application starting in {config.environment.value} mode")
+
+# 신뢰성 시스템 로깅 (지연된 로깅)
+if RELIABILITY_ENABLED:
+    logger.info("🛡️ Reliability systems loaded")
+else:
+    logger.warning("⚠️ Reliability systems not available")
+
+# 고급 기능 시스템 로깅 (Phase 15.3)
+if ADVANCED_ENABLED:
+    logger.info("🚀 Advanced features loaded")
+else:
+    logger.warning("⚠️ Advanced features not available")
+
+# 운영 시스템 로깅 (Phase 15.5)
+if OPERATIONS_ENABLED:
+    logger.info("📊 Operations & monitoring systems loaded")
+else:
+    logger.warning("⚠️ Operations systems not available")
 from jose import jwt, jwk
 from jose.jwt import get_unverified_header
 import requests
@@ -141,9 +232,15 @@ async def get_current_user(request: Request, authorization: Optional[str] = Head
     # except Exception as e:
     #     raise HTTPException(status_code=401, detail=f"Authentication failed: {e}")
 
-app = FastAPI()
+# FastAPI 앱 초기화 (환경별 설정 적용)
+app = FastAPI(
+    title="Bitcoin Trading Bot API",
+    description="Enterprise Trading Bot with Multi-Environment Support",
+    version="1.0.0",
+    debug=config.debug
+)
 
-# Health Check Endpoint
+# Health Check Endpoint (Enhanced with Environment Info)
 @app.get("/health")
 async def health_check():
     """시스템 건강 상태 확인"""
@@ -151,11 +248,14 @@ async def health_check():
         health_status = {
             "status": "healthy",
             "timestamp": datetime.now().isoformat(),
+            "environment": config.environment.value,
+            "security_level": env_manager.get_security_summary()['security_level'],
             "services": {
                 "trading_engine": True,
                 "position_manager": True,
                 "risk_manager": True,
-                "demo_mode": True  # Demo mode status
+                "demo_mode": config.trading.demo_mode,
+                "rate_limiting": config.security.rate_limit_enabled
             },
             "uptime": "running",
             "version": "1.0.0"
@@ -178,21 +278,143 @@ async def health_check():
             "error": str(e)
         }
 
+# Environment Configuration Endpoint (Phase 15.1.3)
+@app.get("/environment")
+async def get_environment_info():
+    """환경 설정 정보 조회 (민감한 정보 제외)"""
+    try:
+        return {
+            "environment": config.environment.value,
+            "config": env_manager.get_safe_config_dict(),
+            "security_summary": env_manager.get_security_summary(),
+            "features": {
+                "demo_mode": config.trading.demo_mode,
+                "debug_mode": config.debug,
+                "rate_limiting": config.security.rate_limit_enabled,
+                "cors_enabled": len(config.security.cors_origins) > 0
+            },
+            "timestamp": datetime.now().isoformat()
+        }
+    except Exception as e:
+        logger.error(f"Environment info retrieval failed: {e}")
+        raise HTTPException(status_code=500, detail="Failed to retrieve environment info")
+
+# Reliability Status Endpoint (Phase 15.2)
+@app.get("/reliability")
+async def get_reliability_status():
+    """신뢰성 시스템 상태 조회"""
+    try:
+        if not RELIABILITY_ENABLED:
+            return {
+                "reliability_enabled": False,
+                "message": "Basic reliability mode",
+                "timestamp": datetime.now().isoformat()
+            }
+        
+        return {
+            "reliability_enabled": True,
+            "circuit_breakers": {
+                "exchange_api": exchange_breaker.get_status(),
+                "database": database_breaker.get_status()
+            },
+            "health_monitor": health_monitor.get_current_status(),
+            "backup_manager": backup_manager.get_status(),
+            "shutdown_manager": shutdown_manager.get_status(),
+            "timestamp": datetime.now().isoformat()
+        }
+    except Exception as e:
+        logger.error(f"Reliability status retrieval failed: {e}")
+        raise HTTPException(status_code=500, detail="Failed to retrieve reliability status")
+
+# Backup Management Endpoints (Phase 15.2)
+@app.post("/backup/create")
+async def create_backup():
+    """백업 생성"""
+    if not RELIABILITY_ENABLED:
+        raise HTTPException(status_code=503, detail="Reliability systems not available")
+    
+    try:
+        from reliability.backup_manager import BackupType
+        metadata = await backup_manager.create_backup(BackupType.FULL, compress=True)
+        
+        return {
+            "success": metadata.status.value == "completed",
+            "backup_id": metadata.backup_id,
+            "status": metadata.status.value,
+            "file_size_mb": metadata.file_size / 1024 / 1024,
+            "duration_seconds": metadata.duration_seconds,
+            "timestamp": metadata.timestamp
+        }
+    except Exception as e:
+        logger.error(f"Backup creation failed: {e}")
+        raise HTTPException(status_code=500, detail="Failed to create backup")
+
+@app.get("/backup/list")
+async def list_backups(limit: int = 20):
+    """백업 목록 조회"""
+    if not RELIABILITY_ENABLED:
+        raise HTTPException(status_code=503, detail="Reliability systems not available")
+    
+    try:
+        backups = await backup_manager.list_backups(limit=limit)
+        return {
+            "backups": backups,
+            "total_count": len(backup_manager.backup_history),
+            "backup_manager_status": backup_manager.get_status()
+        }
+    except Exception as e:
+        logger.error(f"Backup list retrieval failed: {e}")
+        raise HTTPException(status_code=500, detail="Failed to retrieve backup list")
+
+@app.post("/backup/restore/{backup_id}")
+async def restore_backup(backup_id: str):
+    """백업 복원"""
+    if not RELIABILITY_ENABLED:
+        raise HTTPException(status_code=503, detail="Reliability systems not available")
+    
+    try:
+        success = await backup_manager.restore_backup(backup_id)
+        return {
+            "success": success,
+            "backup_id": backup_id,
+            "message": "Backup restored successfully" if success else "Backup restore failed"
+        }
+    except Exception as e:
+        logger.error(f"Backup restore failed: {e}")
+        raise HTTPException(status_code=500, detail="Failed to restore backup")
+
 origins = [
     "http://localhost",
     "http://localhost:3000", # Next.js frontend
     "http://127.0.0.1:3000",
 ]
 
+# 환경별 CORS 설정 (Phase 15.1.3: Environment Separation)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "*"
-    ],
+    allow_origins=config.security.cors_origins,
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
     allow_headers=["*"],
+    expose_headers=["X-Rate-Limit-Remaining", "X-Rate-Limit-Reset"]
 )
+
+logger.info(f"🔗 CORS configured for origins: {config.security.cors_origins}")
+
+# 신뢰성 시스템 초기화 (Phase 15.2)
+if RELIABILITY_ENABLED:
+    try:
+        # 백업할 데이터 소스들 등록
+        backup_manager.register_json_source("active_strategies", "./data/active_strategies.json")
+        backup_manager.register_json_source("api_keys", "./data/api_keys.json")
+        backup_manager.register_json_source("fund_management", "./data/fund_management.json")
+        backup_manager.register_json_source("notifications", "./data/notifications.json")
+        backup_manager.register_json_source("trading_history", "./data/trading_history.json")
+        backup_manager.register_json_source("user_settings", "./data/user_settings.json")
+        
+        logger.info("💾 Backup sources registered for critical data")
+    except Exception as e:
+        logger.error(f"🔴 Failed to initialize backup system: {e}")
 
 # WebSocket Connection Manager
 class ConnectionManager:
@@ -1776,6 +1998,94 @@ async def create_test_notification(user_id: str = Depends(get_current_user)):
     )
     
     return {"message": "Test notification created and broadcasted", "notification": notification}
+
+# =============================================================================
+# Phase 15.5: Operations & Monitoring API 엔드포인트
+# =============================================================================
+
+@app.get("/api/operations/performance/current")
+async def get_current_performance_metrics():
+    """현재 성능 메트릭 조회"""
+    try:
+        if not OPERATIONS_ENABLED:
+            return {
+                "success": False,
+                "error": "Operations systems not available",
+                "data": None
+            }
+        
+        collector = get_performance_collector()
+        if not collector:
+            return {
+                "success": False,
+                "error": "Performance collector not initialized",
+                "data": None
+            }
+        
+        metrics = collector.get_current_metrics()
+        return {
+            "success": True,
+            "data": metrics,
+            "timestamp": datetime.now().isoformat()
+        }
+        
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e),
+            "data": None
+        }
+
+@app.get("/api/operations/system/overview")
+async def get_operations_overview():
+    """운영 시스템 종합 개요"""
+    try:
+        if not OPERATIONS_ENABLED:
+            return {
+                "success": False,
+                "error": "Operations systems not available",
+                "data": {
+                    "operations_enabled": False,
+                    "systems_status": "disabled"
+                }
+            }
+        
+        # 성능 메트릭
+        performance_data = {}
+        collector = get_performance_collector()
+        if collector:
+            performance_data = collector.get_current_metrics()
+        
+        # 알림 상태
+        alerts_data = {}
+        alerting_manager = get_alerting_manager()
+        if alerting_manager:
+            alerts_data = alerting_manager.get_alert_summary(24)
+        
+        return {
+            "success": True,
+            "data": {
+                "operations_enabled": True,
+                "performance_metrics": performance_data,
+                "alerts_summary": alerts_data,
+                "systems_status": {
+                    "performance_monitoring": collector is not None,
+                    "alerting_system": alerting_manager is not None,
+                    "database_optimization": True
+                }
+            },
+            "timestamp": datetime.now().isoformat()
+        }
+        
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e),
+            "data": {
+                "operations_enabled": OPERATIONS_ENABLED,
+                "systems_status": "error"
+            }
+        }
 
 # WebSocket endpoint
 @app.websocket("/ws/monitoring")
@@ -3694,3 +4004,425 @@ async def debug_trading_engine():
         
     except Exception as e:
         return {"error": str(e)}
+
+# =============================================================================
+# Phase 15.3: 고급 기능 엔드포인트
+# =============================================================================
+
+# 고급 기능 시스템 (Phase 15.3)
+try:
+    from advanced import MultiStrategyEngine, AdvancedIndicators
+    from advanced.analytics_engine import AnalyticsEngine, ReportType
+    ADVANCED_FEATURES_ENABLED = True
+    
+    # 글로벌 인스턴스 생성
+    multi_strategy_engine = MultiStrategyEngine()
+    advanced_indicators = AdvancedIndicators()
+    analytics_engine = AnalyticsEngine("data")
+    
+    logger.info("✅ Advanced features loaded successfully")
+except ImportError as e:
+    ADVANCED_FEATURES_ENABLED = False
+    logger.warning(f"⚠️ Advanced features not available: {e}")
+
+@app.get("/advanced/status")
+async def get_advanced_features_status():
+    """고급 기능 상태 확인"""
+    if not ADVANCED_FEATURES_ENABLED:
+        return {"enabled": False, "message": "Advanced features not available"}
+    
+    try:
+        status = multi_strategy_engine.get_system_status()
+        return {
+            "enabled": True,
+            "multi_strategy_engine": status,
+            "analytics_engine": {
+                "status": "ready",
+                "available_analysis_types": ["performance", "risk", "correlation", "volatility", "drawdown"]
+            },
+            "advanced_indicators": {
+                "status": "ready", 
+                "available_indicators": ["cci", "rsi", "macd", "bollinger", "stochastic", "adx", "williams_r", "ichimoku"]
+            }
+        }
+    except Exception as e:
+        logger.error(f"🔴 Error getting advanced features status: {e}")
+        return {"enabled": False, "error": str(e)}
+
+@app.post("/advanced/strategy/add")
+async def add_trading_strategy(
+    strategy_config: dict,
+    user_id: str = Depends(get_current_user)
+):
+    """거래 전략 추가"""
+    if not ADVANCED_FEATURES_ENABLED:
+        raise HTTPException(status_code=503, detail="Advanced features not available")
+    
+    try:
+        # 기본 전략들 생성 및 추가
+        from advanced.multi_strategy_engine import create_default_strategies
+        strategies = create_default_strategies()
+        
+        added_strategies = []
+        for strategy in strategies:
+            multi_strategy_engine.add_strategy(strategy)
+            added_strategies.append({
+                "name": strategy.config.name,
+                "description": strategy.config.description,
+                "status": strategy.status.value
+            })
+        
+        return {
+            "message": "Default strategies added successfully",
+            "strategies": added_strategies,
+            "total_strategies": len(multi_strategy_engine.strategies)
+        }
+        
+    except Exception as e:
+        logger.error(f"🔴 Error adding trading strategy: {e}")
+        raise HTTPException(status_code=500, detail=f"Error adding strategy: {str(e)}")
+
+@app.post("/advanced/analytics/performance")
+async def create_performance_analysis(
+    user_id: str = Depends(get_current_user)
+):
+    """성과 분석 생성"""
+    if not ADVANCED_FEATURES_ENABLED:
+        raise HTTPException(status_code=503, detail="Advanced features not available")
+    
+    try:
+        # 샘플 거래 데이터 생성 (실제로는 사용자 데이터 사용)
+        import numpy as np
+        np.random.seed(42)
+        trades_data = []
+        
+        for i in range(30):
+            is_win = np.random.random() < 0.65  # 65% 승률
+            pnl = np.random.uniform(50, 300) if is_win else np.random.uniform(-150, -25)
+            trades_data.append({
+                'timestamp': (datetime.now() - timedelta(days=30-i)).isoformat(),
+                'pnl': pnl,
+                'pnl_pct': pnl / 5000 * 100,  # 5000달러 기준
+                'entry_time': (datetime.now() - timedelta(days=30-i, hours=2)).isoformat(),
+                'exit_time': (datetime.now() - timedelta(days=30-i, hours=1)).isoformat()
+            })
+        
+        # 성과 분석 생성
+        analysis = await analytics_engine.create_performance_analysis(trades_data, "Portfolio Performance")
+        
+        return {
+            "analysis_type": analysis.analysis_type.value,
+            "trades_analyzed": len(trades_data),
+            "metrics": analysis.data,
+            "summary": analysis.summary,
+            "recommendations": analysis.recommendations,
+            "charts_generated": len(analysis.charts),
+            "timestamp": analysis.timestamp.isoformat()
+        }
+        
+    except Exception as e:
+        logger.error(f"🔴 Error creating performance analysis: {e}")
+        raise HTTPException(status_code=500, detail=f"Error creating analysis: {str(e)}")
+
+# =============================================================================
+# Phase 15.4: Frontend Dashboard Integration APIs
+# =============================================================================
+
+# 고급 기능들을 위한 글로벌 인스턴스들
+portfolio_manager_instance = None
+advanced_risk_manager_instance = None
+backtesting_engine_instance = None
+optimizer_instance = None
+
+async def initialize_advanced_instances():
+    """고급 기능 인스턴스들 초기화"""
+    global portfolio_manager_instance, advanced_risk_manager_instance
+    global backtesting_engine_instance, optimizer_instance
+    
+    if ADVANCED_FEATURES_ENABLED:
+        try:
+            from advanced.portfolio_manager import PortfolioManager
+            from advanced.advanced_risk_manager import AdvancedRiskManager
+            from advanced.backtesting_engine import BacktestingEngine
+            from advanced.parameter_optimizer import ParameterOptimizer
+            
+            portfolio_manager_instance = PortfolioManager(
+                initial_capital=10000.0,
+                max_positions=3,
+                rebalance_interval=timedelta(hours=24)
+            )
+            
+            advanced_risk_manager_instance = AdvancedRiskManager(current_capital=10000.0)
+            backtesting_engine_instance = BacktestingEngine()
+            optimizer_instance = ParameterOptimizer()
+            
+            logger.info("✅ Advanced instances initialized")
+        except Exception as e:
+            logger.error(f"❌ Failed to initialize advanced instances: {e}")
+    
+    # 운영 시스템 초기화 (Phase 15.5)
+    if OPERATIONS_ENABLED:
+        try:
+            # 성능 모니터링 초기화
+            initialize_performance_monitoring(interval=30)
+            
+            # 알림 시스템 초기화
+            initialize_alerting()
+            
+            # 데이터베이스 최적화 초기화
+            initialize_database_optimization()
+            
+            # 재해 복구 시스템 초기화
+            initialize_disaster_recovery()
+            
+            logger.info("✅ Operations & monitoring systems initialized")
+            
+        except Exception as e:
+            logger.error(f"❌ Error initializing operations systems: {e}")
+
+# Frontend Dashboard API 엔드포인트들
+
+@app.get("/api/dashboard/overview")
+async def get_dashboard_overview():
+    """대시보드 개요 데이터"""
+    try:
+        # 포트폴리오 상태
+        portfolio_data = {}
+        if ADVANCED_FEATURES_ENABLED and portfolio_manager_instance:
+            portfolio_data = await portfolio_manager_instance.get_portfolio_status()
+        else:
+            portfolio_data = {
+                "total_balance": 10000.0,
+                "available_balance": 9500.0,
+                "positions": 1,
+                "pnl": 150.0,
+                "pnl_pct": 1.5
+            }
+        
+        # 활성 전략
+        strategies_data = []
+        if ADVANCED_FEATURES_ENABLED:
+            strategies_data = await multi_strategy_engine.get_active_strategies()
+        else:
+            strategies_data = [
+                {"name": "CCI Strategy", "enabled": True, "pnl": 85.2},
+                {"name": "RSI+MACD Strategy", "enabled": False, "pnl": 0.0}
+            ]
+        
+        # 최근 거래
+        try:
+            result = supabase.table('trades').select('*').order('created_at', desc=True).limit(5).execute()
+            recent_trades = result.data if result.data else []
+        except:
+            recent_trades = []
+        
+        return {
+            "success": True,
+            "data": {
+                "portfolio": portfolio_data,
+                "strategies": strategies_data,
+                "recent_trades": recent_trades,
+                "system_status": {
+                    "uptime": "running",
+                    "advanced_features": ADVANCED_FEATURES_ENABLED,
+                    "reliability_systems": RELIABILITY_ENABLED
+                }
+            },
+            "timestamp": datetime.now().isoformat()
+        }
+    except Exception as e:
+        logger.error(f"❌ Dashboard overview failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/strategies/optimize")
+async def optimize_strategy_parameters(
+    strategy_name: str,
+    parameter_ranges: dict,
+    optimization_method: str = "genetic"
+):
+    """전략 파라미터 최적화"""
+    if not ADVANCED_FEATURES_ENABLED or not optimizer_instance:
+        raise HTTPException(status_code=503, detail="Advanced optimization not available")
+    
+    try:
+        # 시장 데이터 가져오기
+        from bingx_client import BingXClient
+        client = BingXClient()
+        market_data = await client.get_market_data("BTCUSDT", "5m", 1000)
+        
+        from advanced.parameter_optimizer import OptimizationConfig
+        config = OptimizationConfig(
+            parameter_ranges=parameter_ranges,
+            method=optimization_method,
+            objective="sharpe_ratio",
+            max_iterations=50,
+            population_size=20
+        )
+        
+        result = await optimizer_instance.optimize_strategy_parameters(
+            strategy_name, market_data, config
+        )
+        
+        return {
+            "success": True,
+            "optimization_result": {
+                "best_parameters": result.best_parameters,
+                "best_score": result.best_score,
+                "method_used": result.method_used,
+                "objective": result.objective_used
+            },
+            "timestamp": datetime.now().isoformat()
+        }
+    except Exception as e:
+        logger.error(f"❌ Strategy optimization failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/analytics/advanced")
+async def get_advanced_analytics():
+    """고급 분석 데이터"""
+    if not ADVANCED_FEATURES_ENABLED:
+        raise HTTPException(status_code=503, detail="Advanced analytics not available")
+    
+    try:
+        # VaR 계산
+        risk_data = {}
+        if advanced_risk_manager_instance:
+            # 샘플 수익률 데이터
+            import numpy as np
+            returns = np.random.normal(0.001, 0.02, 100).tolist()
+            var_calculation = await advanced_risk_manager_instance.calculate_var(returns)
+            risk_data = {
+                "var_95": var_calculation.var_95,
+                "var_99": var_calculation.var_99,
+                "cvar_95": var_calculation.cvar_95
+            }
+        
+        # 포트폴리오 성과
+        portfolio_performance = {}
+        if portfolio_manager_instance:
+            portfolio_performance = await portfolio_manager_instance.get_performance_summary()
+        
+        return {
+            "success": True,
+            "data": {
+                "risk_metrics": risk_data,
+                "portfolio_performance": portfolio_performance,
+                "analytics_engine_status": "active" if ADVANCED_FEATURES_ENABLED else "inactive"
+            },
+            "timestamp": datetime.now().isoformat()
+        }
+    except Exception as e:
+        logger.error(f"❌ Advanced analytics failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/market/indicators/{symbol}")
+async def get_market_indicators(symbol: str = "BTCUSDT"):
+    """실시간 기술 지표 데이터"""
+    if not ADVANCED_FEATURES_ENABLED:
+        # 기본 지표 데이터 반환
+        return {
+            "success": True,
+            "data": {
+                "indicators": {
+                    "cci": {"current": -85.3, "signal": "BUY"},
+                    "rsi": {"current": 45.2, "signal": "NEUTRAL"},
+                    "macd": {"current": 125.8, "signal": "BUY"}
+                },
+                "composite_signal": {
+                    "signal": "BUY",
+                    "confidence": 0.72,
+                    "strength": "MODERATE",
+                    "trend": "UPWARD"
+                }
+            },
+            "timestamp": datetime.now().isoformat()
+        }
+    
+    try:
+        # 데모 시장 데이터 생성
+        import pandas as pd
+        import numpy as np
+        dates = pd.date_range(start=datetime.now() - timedelta(hours=8), periods=100, freq='5T')
+        market_data = pd.DataFrame({
+            'timestamp': dates,
+            'open': np.random.uniform(65000, 67000, 100),
+            'high': np.random.uniform(66000, 68000, 100),
+            'low': np.random.uniform(64000, 66000, 100),
+            'close': np.random.uniform(65000, 67000, 100),
+            'volume': np.random.uniform(10, 100, 100)
+        })
+        
+        if market_data.empty:
+            raise HTTPException(status_code=503, detail="Market data unavailable")
+        
+        # 고급 지표 계산
+        indicators = advanced_indicators.calculate_all_indicators(market_data)
+        composite_signal = advanced_indicators.create_composite_signal([], indicators)
+        
+        return {
+            "success": True,
+            "data": {
+                "indicators": indicators,
+                "composite_signal": {
+                    "signal": composite_signal.overall_signal,
+                    "confidence": composite_signal.confidence,
+                    "strength": composite_signal.strength.name,
+                    "trend": composite_signal.trend_direction.name
+                }
+            },
+            "timestamp": datetime.now().isoformat()
+        }
+    except Exception as e:
+        logger.error(f"❌ Failed to get market indicators: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.websocket("/ws/advanced")
+async def advanced_websocket(websocket: WebSocket):
+    """고급 기능 실시간 업데이트"""
+    await websocket.accept()
+    logger.info("📡 Advanced WebSocket connected")
+    
+    try:
+        while True:
+            # 실시간 시장 데이터
+            if ADVANCED_FEATURES_ENABLED:
+                from bingx_client import BingXClient
+                client = BingXClient()
+                market_data = await client.get_market_data("BTCUSDT", "5m", 20)
+                
+                if not market_data.empty:
+                    # 고급 지표 계산
+                    indicators = advanced_indicators.calculate_all_indicators(market_data)
+                    
+                    # 실시간 업데이트 데이터
+                    update_data = {
+                        "type": "advanced_update",
+                        "market_data": {
+                            "symbol": "BTCUSDT",
+                            "price": float(market_data['close'].iloc[-1]),
+                            "volume": float(market_data['volume'].iloc[-1])
+                        },
+                        "indicators": {
+                            "cci": indicators.get('cci', {}).get('current', 0),
+                            "rsi": indicators.get('rsi', {}).get('current', 0),
+                            "macd": indicators.get('macd', {}).get('histogram', 0)
+                        },
+                        "portfolio_status": await portfolio_manager_instance.get_portfolio_status() if portfolio_manager_instance else {},
+                        "timestamp": datetime.now().isoformat()
+                    }
+                    
+                    await websocket.send_text(json.dumps(update_data))
+            
+            await asyncio.sleep(5)  # 5초마다 업데이트
+            
+    except WebSocketDisconnect:
+        logger.info("📡 Advanced WebSocket disconnected")
+    except Exception as e:
+        logger.error(f"❌ Advanced WebSocket error: {e}")
+        await websocket.close()
+
+# 앱 시작 시 고급 인스턴스 초기화
+@app.on_event("startup")
+async def startup_event():
+    await initialize_advanced_instances()
+

@@ -1,0 +1,63 @@
+# Docker ignore file - 불필요한 파일들 제외
+# =============================================================================
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+.venv/
+
+# Development files  
+.env.local
+.env.development
+*.log
+logs/
+.DS_Store
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+
+# Git
+.git/
+.gitignore
+
+# Documentation
+README.md
+docs/
+
+# Development scripts
+test_*.py
+*_test.py
+scripts/
+
+# Jupyter notebooks
+*.ipynb
+.jupyter/
+
+# OS generated files
+Thumbs.db
+.DS_Store
+
+# Temporary files
+*.tmp
+*.temp
+.tmp/
+
+# Build artifacts
+build/
+dist/
+*.egg-info/

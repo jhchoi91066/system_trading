@@ -12,6 +12,13 @@ export default function StrategiesPage() {
   const [loadingAction, setLoadingAction] = useState(false); // For create/activate/deactivate actions
   const [error, setError] = useState<string | null>(null);
   
+  // 고급 기능 상태
+  const [advancedFeaturesEnabled, setAdvancedFeaturesEnabled] = useState(false);
+  const [portfolioOverview, setPortfolioOverview] = useState<any>(null);
+  const [optimizationResults, setOptimizationResults] = useState<any>(null);
+  const [showOptimizeModal, setShowOptimizeModal] = useState(false);
+  const [selectedStrategyForOptimization, setSelectedStrategyForOptimization] = useState<any>(null);
+  
   const { getToken } = useAuth();
 
   const strategyParameterConfigs: { [key: string]: { name: string; label: string; type: string; defaultValue: any; options?: string[]; }[] } = {
@@ -92,7 +99,66 @@ export default function StrategiesPage() {
     fetchActiveStrategies();
     fetchExchanges();
     fetchPortfolioStats();
+    checkAdvancedFeatures();
+    fetchDashboardOverview();
   }, []);
+
+  const checkAdvancedFeatures = async () => {
+    try {
+      const response = await fetchWithAuth('http://127.0.0.1:8000/advanced/status');
+      if (response.ok) {
+        const data = await response.json();
+        setAdvancedFeaturesEnabled(data.enabled);
+      }
+    } catch (e) {
+      console.log('Advanced features not available');
+    }
+  };
+
+  const fetchDashboardOverview = async () => {
+    if (!advancedFeaturesEnabled) return;
+    
+    try {
+      const response = await fetchWithAuth('http://127.0.0.1:8000/api/dashboard/overview');
+      if (response.ok) {
+        const data = await response.json();
+        setPortfolioOverview(data.data);
+      }
+    } catch (e) {
+      console.error('Failed to fetch dashboard overview:', e);
+    }
+  };
+
+  const optimizeStrategy = async (strategyName: string) => {
+    setLoadingAction(true);
+    try {
+      const parameterRanges = {
+        cci_period: [10, 30],
+        overbought: [80, 150], 
+        oversold: [-150, -80]
+      };
+
+      const response = await fetchWithAuth('http://127.0.0.1:8000/api/strategies/optimize', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          strategy_name: strategyName,
+          parameter_ranges: parameterRanges,
+          optimization_method: 'genetic'
+        })
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setOptimizationResults(data.optimization_result);
+        alert(`Optimization completed! Best score: ${data.optimization_result.best_score.toFixed(3)}`);
+      }
+    } catch (e: any) {
+      setError(`Optimization failed: ${e.message}`);
+    } finally {
+      setLoadingAction(false);
+    }
+  };
   
   const fetchPortfolioStats = async () => {
     setLoadingFetch(true);
@@ -331,6 +397,27 @@ export default function StrategiesPage() {
       <div className="max-w-7xl mx-auto">
         <h1 className="text-h1 text-center mb-12">Trading Strategies</h1>
         
+        {/* Advanced Features Status */}
+        {advancedFeaturesEnabled && (
+          <div className="linear-card mb-4 bg-gradient-to-r from-green-500/10 to-blue-500/10 border-green-500/20">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-3">
+                <span className="text-2xl">🚀</span>
+                <div>
+                  <h3 className="text-body font-medium text-green-400">Advanced Features Enabled</h3>
+                  <p className="text-small text-secondary">AI-powered optimization, multi-strategy engine, and advanced analytics available</p>
+                </div>
+              </div>
+              {optimizationResults && (
+                <div className="text-right">
+                  <p className="text-small text-green-400">Last Optimization Score: {optimizationResults.best_score?.toFixed(3)}</p>
+                  <p className="text-xs text-secondary">{optimizationResults.method_used}</p>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+        
         {/* Portfolio Overview */}
         <div className="linear-card mb-8">
           <h2 className="text-h3 mb-6">Portfolio Overview</h2>
@@ -379,16 +466,31 @@ export default function StrategiesPage() {
                         Parameters: {Object.entries(strategy.parameters).map(([key, value]) => `${key}: ${value}`).join(', ')}
                       </div>
                     )}
-                    <button 
-                      className="linear-button-primary py-2 px-4"
-                      onClick={() => {
-                        setSelectedStrategy(strategy);
-                        setShowActivateForm(true);
-                      }}
-                      disabled={loadingAction}
-                    >
-                      Activate for Trading
-                    </button>
+                    <div className="flex space-x-2">
+                      <button 
+                        className="linear-button-primary py-2 px-4 flex-1"
+                        onClick={() => {
+                          setSelectedStrategy(strategy);
+                          setShowActivateForm(true);
+                        }}
+                        disabled={loadingAction}
+                      >
+                        Activate for Trading
+                      </button>
+                      {advancedFeaturesEnabled && (
+                        <button
+                          className="linear-button-secondary py-2 px-3 text-blue-400 hover:text-blue-300"
+                          onClick={() => {
+                            setSelectedStrategyForOptimization(strategy);
+                            setShowOptimizeModal(true);
+                          }}
+                          disabled={loadingAction}
+                          title="AI Parameter Optimization"
+                        >
+                          🧠 Optimize
+                        </button>
+                      )}
+                    </div>
                   </div>
                 ))}
               </div>
@@ -705,6 +807,52 @@ export default function StrategiesPage() {
                 </button>
                 <button
                   onClick={() => setShowCreateForm(false)}
+                  className="linear-button-secondary py-3 px-6"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Strategy Optimization Modal */}
+        {showOptimizeModal && selectedStrategyForOptimization && advancedFeaturesEnabled && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="linear-card max-w-lg w-full mx-4">
+              <h2 className="text-h3 mb-6">🧠 AI Strategy Optimization</h2>
+              <div className="mb-4">
+                <p className="text-body text-white mb-2">Strategy: {selectedStrategyForOptimization.name}</p>
+                <p className="text-small text-secondary">
+                  AI will optimize parameters using genetic algorithms to maximize Sharpe ratio.
+                  This process may take 1-2 minutes.
+                </p>
+              </div>
+              
+              {optimizationResults && (
+                <div className="glass-light p-4 rounded-lg mb-4">
+                  <h4 className="text-small font-medium text-green-400 mb-2">Latest Optimization Results</h4>
+                  <div className="space-y-1 text-xs">
+                    <p>Best Score: <span className="text-green-400">{optimizationResults.best_score?.toFixed(3)}</span></p>
+                    <p>Method: <span className="text-blue-400">{optimizationResults.method_used}</span></p>
+                    <p>Parameters: {JSON.stringify(optimizationResults.best_parameters, null, 1)}</p>
+                  </div>
+                </div>
+              )}
+              
+              <div className="flex space-x-4">
+                <button
+                  onClick={() => optimizeStrategy(selectedStrategyForOptimization.name)}
+                  disabled={loadingAction}
+                  className="linear-button-primary py-3 px-6 flex-1 disabled:opacity-50"
+                >
+                  {loadingAction ? '🔄 Optimizing...' : '🚀 Start Optimization'}
+                </button>
+                <button
+                  onClick={() => {
+                    setShowOptimizeModal(false);
+                    setSelectedStrategyForOptimization(null);
+                  }}
                   className="linear-button-secondary py-3 px-6"
                 >
                   Cancel

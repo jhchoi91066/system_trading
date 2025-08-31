@@ -9,3 +9,14 @@ python-dotenv
 python-jose[cryptography]
 websockets
 pydantic
+cryptography
+redis
+slowapi
+flask
+requests
+aiofiles
+psutil
+TA-Lib
+scikit-learn
+matplotlib
+seaborn

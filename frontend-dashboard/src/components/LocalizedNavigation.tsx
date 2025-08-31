@@ -46,8 +46,11 @@ export function LocalizedNavigationLinks({ isMobile = false }: { isMobile?: bool
         <a href="/strategies" style={linkStyle}>Strategies</a>
         <a href="/backtest" style={linkStyle}>Backtest</a>
         <a href="/trading-history" style={linkStyle}>Trading History</a>
+        <a href="/portfolio" style={linkStyle}>Portfolio</a>
         <a href="/fund-management" style={linkStyle}>Fund Management</a>
         <a href="/api-keys" style={linkStyle}>API Keys</a>
+        <a href="/operations" style={linkStyle}>Operations</a>
+        <a href="/alerts" style={linkStyle}>Alerts</a>
         <a href="/monitoring" style={linkStyle}>Monitoring</a>
         <a href="/notifications" style={linkStyle}>Notifications</a>
         <a href="/settings" style={linkStyle}>Settings</a>
@@ -61,8 +64,11 @@ export function LocalizedNavigationLinks({ isMobile = false }: { isMobile?: bool
       <a href="/strategies" style={linkStyle}>{t('nav.strategies')}</a>
       <a href="/backtest" style={linkStyle}>{t('nav.backtest')}</a>
       <a href="/trading-history" style={linkStyle}>{t('nav.tradingHistory')}</a>
+      <a href="/portfolio" style={linkStyle}>{t('nav.portfolio')}</a>
       <a href="/fund-management" style={linkStyle}>{t('nav.fundManagement')}</a>
       <a href="/api-keys" style={linkStyle}>{t('nav.apiKeys')}</a>
+      <a href="/operations" style={linkStyle}>{t('nav.operations')}</a>
+      <a href="/alerts" style={linkStyle}>{t('nav.alerts')}</a>
       <a href="/monitoring" style={linkStyle}>{t('nav.monitoring')}</a>
       <a href="/notifications" style={linkStyle}>{t('nav.notifications')}</a>
       <a href="/settings" style={linkStyle}>{t('common.settings')}</a>

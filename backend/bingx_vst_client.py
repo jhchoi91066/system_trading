@@ -129,18 +129,27 @@ class BingXVSTClient:
         return signature
     
     def _get_timestamp(self) -> str:
-        """서버 시간과 동기화된 타임스탬프 반환 (밀리초)"""
+        """서버 시간과 동기화된 타임스탬프 반환 (밀리초) - 개선된 버전"""
         try:
-            # 서버 시간 동기화 (첫 요청 시에만)
-            if not hasattr(self, '_server_time_offset'):
+            # 서버 시간 오프셋이 없거나 오래되었으면 재동기화
+            current_time = time.time()
+            if not hasattr(self, '_server_time_offset') or not hasattr(self, '_last_sync_time'):
+                self._sync_server_time()
+            elif current_time - self._last_sync_time > 30:  # 30초마다 재동기화
                 self._sync_server_time()
             
-            # 로컬 시간 + 서버 오프셋
-            local_time = int(time.time() * 1000)
-            return str(local_time + self._server_time_offset)
+            local_time = int(current_time * 1000)
+            synchronized_time = local_time + self._server_time_offset
+            
+            # 네트워크 지연 보상 (100ms 추가)
+            network_compensation = 100
+            final_timestamp = synchronized_time + network_compensation
+            
+            return str(final_timestamp)
         except Exception as e:
-            logger.warning(f"Timestamp sync failed, using local time: {e}")
-            return str(int(time.time() * 1000))
+            logger.warning(f"Advanced timestamp sync failed, using compensated local time: {e}")
+            # 백업: 로컬 시간에 네트워크 지연 보상만 추가
+            return str(int(time.time() * 1000) + 100)
     
     def _sync_server_time(self):
         """BingX 서버 시간과 동기화"""
@@ -149,15 +158,30 @@ class BingXVSTClient:
             response = self.session.get('https://open-api.bingx.com/openApi/swap/v2/server/time', timeout=5)
             if response.status_code == 200:
                 server_data = response.json()
-                server_time = server_data.get('timestamp', 0)
-                local_time = int(time.time() * 1000)
-                self._server_time_offset = server_time - local_time
-                logger.info(f"📡 Server time synchronized: offset={self._server_time_offset}ms")
+                # BingX API는 data.serverTime 형태로 반환
+                if server_data.get('code') == 0 and 'data' in server_data:
+                    server_time = server_data['data'].get('serverTime', 0)
+                else:
+                    # 이전 형태 지원 (직접 timestamp 반환)
+                    server_time = server_data.get('timestamp', 0)
+                
+                if server_time > 0:
+                    local_time = int(time.time() * 1000)
+                    self._server_time_offset = server_time - local_time
+                    self._last_sync_time = time.time()  # 마지막 동기화 시간 기록
+                    logger.info(f"📡 Server time synchronized: offset={self._server_time_offset}ms (server: {server_time}, local: {local_time})")
+                else:
+                    logger.warning(f"Invalid server time response: {server_data}")
+                    self._server_time_offset = 0
+                    self._last_sync_time = time.time()
             else:
+                logger.warning(f"Server time API returned status {response.status_code}")
                 self._server_time_offset = 0
+                self._last_sync_time = time.time()  # 실패해도 재시도 방지를 위해 기록
         except Exception as e:
             logger.warning(f"Server time sync failed: {e}")
             self._server_time_offset = 0
+            self._last_sync_time = time.time()  # 실패해도 재시도 방지를 위해 기록
     
     def _check_rate_limit(self):
         """레이트 리미트 체크 및 대기"""
@@ -732,14 +756,64 @@ class BingXVSTClient:
         return self.place_vst_order(symbol, "SELL", "LIMIT", quantity, price)
     
     def create_vst_stop_loss_order(self, symbol: str, quantity: float, stop_price: float, position_side: str = "LONG") -> Dict:
-        """VST 손절 주문"""
-        side = "SELL" if position_side == "LONG" else "BUY"
-        return self.place_vst_order(symbol, side, "STOP_MARKET", quantity, stop_price=stop_price, position_side=position_side)
+        """VST 손절 주문 - 향상된 재시도 로직"""
+        return self._place_tp_sl_order_with_retry(
+            symbol, quantity, stop_price, position_side, "STOP_LOSS"
+        )
     
     def create_vst_take_profit_order(self, symbol: str, quantity: float, price: float, position_side: str = "LONG") -> Dict:
-        """VST 익절 주문"""
+        """VST 익절 주문 - 향상된 재시도 로직"""
+        return self._place_tp_sl_order_with_retry(
+            symbol, quantity, price, position_side, "TAKE_PROFIT"
+        )
+
+    def _place_tp_sl_order_with_retry(self, symbol: str, quantity: float, price: float, 
+                                     position_side: str, order_type: str, max_retries: int = 5) -> Dict:
+        """TP/SL 주문 전용 향상된 재시도 로직"""
         side = "SELL" if position_side == "LONG" else "BUY"
-        return self.place_vst_order(symbol, side, "TAKE_PROFIT_MARKET", quantity, stop_price=price, position_side=position_side)
+        
+        for attempt in range(max_retries):
+            try:
+                if order_type == "STOP_LOSS":
+                    result = self.place_vst_order(symbol, side, "STOP_MARKET", quantity, 
+                                                stop_price=price, position_side=position_side)
+                else:  # TAKE_PROFIT
+                    result = self.place_vst_order(symbol, side, "TAKE_PROFIT_MARKET", quantity, 
+                                                stop_price=price, position_side=position_side)
+                
+                # 성공한 경우
+                if result.get('code') == 0:
+                    logger.info(f"✅ {order_type} order placed successfully on attempt {attempt + 1}")
+                    return result
+                
+                # 타임스탬프 오류인 경우 특별 처리
+                if result.get('code') == 100421:
+                    if attempt < max_retries - 1:
+                        logger.warning(f"🔄 {order_type} timestamp error, retrying... ({attempt + 1}/{max_retries})")
+                        # 강제 서버 시간 동기화 및 더 긴 대기
+                        self._sync_server_time()
+                        time.sleep(1.0)  # TP/SL 주문은 더 긴 대기
+                        continue
+                
+                # 기타 오류인 경우 재시도
+                if attempt < max_retries - 1:
+                    logger.warning(f"⚠️ {order_type} order failed (code: {result.get('code')}), retrying... ({attempt + 1}/{max_retries})")
+                    time.sleep(0.5 * (attempt + 1))  # 점진적 대기 시간 증가
+                    continue
+                
+                # 최종 실패
+                logger.error(f"❌ {order_type} order failed after {max_retries} attempts: {result}")
+                return result
+                
+            except Exception as e:
+                if attempt < max_retries - 1:
+                    logger.warning(f"⚠️ {order_type} order exception, retrying... ({attempt + 1}/{max_retries}): {e}")
+                    time.sleep(0.5 * (attempt + 1))
+                    continue
+                logger.error(f"❌ {order_type} order failed with exception: {e}")
+                return {'error': str(e), 'code': -1}
+        
+        return {'error': f'{order_type} order failed after all retries', 'code': -1}
     
     def create_vst_trailing_stop_order(self, symbol: str, quantity: float, callback_rate: float, position_side: str = "LONG", activation_price: float = None) -> Dict:
         """

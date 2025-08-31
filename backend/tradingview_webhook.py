@@ -21,6 +21,81 @@ from hybrid_trading_config import hybrid_signal_manager, SignalSource
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
+# 보안 모듈 import (새로 추가)
+try:
+    from security_manager import security_manager
+    from rate_limiter import webhook_rate_limit, check_blacklist, ip_blacklist
+    SECURITY_ENABLED = True
+    logger.info("🔐 Enhanced security modules loaded")
+except ImportError as e:
+    logger.warning(f"⚠️ Security modules not available: {e}")
+    SECURITY_ENABLED = False
+    # 폴백 데코레이터 정의
+    def webhook_rate_limit(func):
+        return func
+    def check_blacklist(func):
+        return func
+
+# Flask 호환 보안 데코레이터
+def flask_rate_limit(max_requests=60, window_seconds=60):
+    """Flask용 레이트 리미팅 데코레이터"""
+    def decorator(func):
+        from functools import wraps
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            if not SECURITY_ENABLED:
+                return func(*args, **kwargs)
+            
+            try:
+                from flask import request as flask_request
+                # Mock request for rate limiter
+                class MockRequest:
+                    def __init__(self):
+                        self.client = type('client', (), {
+                            'host': flask_request.environ.get('REMOTE_ADDR', 'unknown')
+                        })()
+                        self.headers = dict(flask_request.headers)
+                
+                mock_request = MockRequest()
+                result = rate_limiter.check_rate_limit(mock_request, max_requests, window_seconds)
+                
+                if not result['allowed']:
+                    from flask import jsonify
+                    logger.warning(f"🔴 Rate limit exceeded for {mock_request.client.host}")
+                    return jsonify({
+                        'error': 'Rate limit exceeded',
+                        'retry_after': result.get('retry_after', 60)
+                    }), 429
+                    
+            except Exception as e:
+                logger.error(f"Rate limit check error: {e}")
+            
+            return func(*args, **kwargs)
+        return wrapper
+    return decorator
+
+def flask_blacklist_check(func):
+    """Flask용 IP 블랙리스트 체크 데코레이터"""
+    from functools import wraps
+    @wraps(func) 
+    def wrapper(*args, **kwargs):
+        if not SECURITY_ENABLED:
+            return func(*args, **kwargs)
+            
+        try:
+            from flask import request as flask_request, jsonify
+            client_ip = flask_request.environ.get('REMOTE_ADDR', 'unknown')
+            
+            if ip_blacklist.is_blacklisted(client_ip):
+                logger.warning(f"🚫 Blocked request from blacklisted IP: {client_ip}")
+                return jsonify({'error': 'IP address is blacklisted'}), 403
+                
+        except Exception as e:
+            logger.error(f"Blacklist check error: {e}")
+            
+        return func(*args, **kwargs)
+    return wrapper
+
 class TradingViewWebhook:
     def __init__(self):
         self.app = Flask(__name__)
@@ -49,13 +124,20 @@ class TradingViewWebhook:
             return jsonify({
                 'status': 'healthy',
                 'timestamp': datetime.now().isoformat(),
-                'service': 'TradingView Webhook Server'
+                'service': 'TradingView Webhook Server',
+                'security': 'enabled' if SECURITY_ENABLED else 'basic'
             })
         
         @self.app.route('/webhook', methods=['POST'])
+        @flask_rate_limit(max_requests=60, window_seconds=60)
+        @flask_blacklist_check
         def webhook_handler():
-            """TradingView Webhook 메인 핸들러"""
+            """TradingView Webhook 메인 핸들러 - 보안 강화"""
             try:
+                # 보안 검증 (서명 확인)
+                if SECURITY_ENABLED and not self.verify_webhook_signature(request):
+                    logger.warning("❌ Webhook signature verification failed")
+                    return jsonify({'error': 'Signature verification failed'}), 401
                 # 1. 요청 검증
                 if not self.verify_request(request):
                     logger.warning("Unauthorized webhook request")
@@ -116,8 +198,9 @@ class TradingViewWebhook:
                 return jsonify({'error': 'Internal server error'}), 500
         
         @self.app.route('/signals', methods=['GET'])
+        @flask_blacklist_check
         def get_recent_signals():
-            """최근 신호 조회 엔드포인트"""
+            """최근 신호 조회 엔드포인트 - IP 블랙리스트 확인"""
             return jsonify({
                 'recent_signals': self.recent_signals,
                 'signal_count': len(self.recent_signals)
@@ -138,9 +221,48 @@ class TradingViewWebhook:
                 'stats': hybrid_signal_manager.get_signal_stats(),
                 'timestamp': datetime.now().isoformat()
             })
+        
+        @self.app.route('/security/status', methods=['GET'])
+        @flask_blacklist_check
+        def get_security_status():
+            """보안 시스템 상태 조회"""
+            try:
+                if not SECURITY_ENABLED:
+                    return jsonify({
+                        'security_enabled': False,
+                        'message': 'Basic security mode',
+                        'timestamp': datetime.now().isoformat()
+                    })
+                
+                # Simple rate status without Mock Request (to avoid Flask async issues)  
+                rate_status = {
+                    'requests_made': 0,
+                    'window_seconds': 3600,
+                    'last_request': 0
+                }
+                
+                return jsonify({
+                    'security_enabled': True,
+                    'rate_limiting': {
+                        'requests_made': rate_status.get('requests_made', 0),
+                        'window_seconds': rate_status.get('window_seconds', 3600), 
+                        'last_request': rate_status.get('last_request', 0)
+                    },
+                    'webhook_secret_set': bool(self.webhook_secret and self.webhook_secret != 'default_secret_change_me'),
+                    'allowed_symbols': len(self.allowed_symbols),
+                    'signal_cooldown': self.signal_cooldown,
+                    'timestamp': datetime.now().isoformat()
+                })
+                
+            except Exception as e:
+                logger.error(f"Security status error: {e}")
+                return jsonify({
+                    'error': 'Failed to get security status',
+                    'timestamp': datetime.now().isoformat()
+                }), 500
     
     def verify_request(self, request):
-        """Webhook 요청 검증"""
+        """Webhook 요청 검증 (기본)"""
         try:
             # 1. User-Agent 체크 (선택사항)
             user_agent = request.headers.get('User-Agent', '')
@@ -160,6 +282,42 @@ class TradingViewWebhook:
             
         except Exception as e:
             logger.error(f"Request verification error: {e}")
+            return False
+    
+    def verify_webhook_signature(self, request):
+        """웹훅 서명 검증 (고급 보안)"""
+        try:
+            if not SECURITY_ENABLED:
+                return True  # 보안 모듈 없으면 통과
+            
+            # 1. 서명 헤더 확인
+            signature_header = request.headers.get('X-TradingView-Signature')
+            if not signature_header:
+                # TradingView에서 서명을 보내지 않는 경우 기본 검증 사용
+                return self.verify_request(request)
+            
+            # 2. 페이로드 가져오기
+            payload = request.get_data(as_text=True)
+            if not payload:
+                logger.error("Empty payload for signature verification")
+                return False
+            
+            # 3. 서명 검증
+            is_valid = security_manager.verify_webhook_signature(
+                payload=payload,
+                signature=signature_header,
+                secret=self.webhook_secret
+            )
+            
+            if is_valid:
+                logger.info("✅ Webhook signature verified")
+                return True
+            else:
+                logger.warning("🔴 Webhook signature verification failed")
+                return False
+                
+        except Exception as e:
+            logger.error(f"Signature verification error: {e}")
             return False
     
     def parse_tradingview_text(self, text_data):
