@@ -1,6 +1,7 @@
 import ccxt.async_support as ccxt
 from fastapi import FastAPI, HTTPException, Path, Query, WebSocket, WebSocketDisconnect, Depends, Header, Request
 from fastapi.middleware.cors import CORSMiddleware
+from contextlib import asynccontextmanager
 from pydantic import BaseModel
 from db import supabase
 import asyncio
@@ -232,12 +233,22 @@ async def get_current_user(request: Request, authorization: Optional[str] = Head
     # except Exception as e:
     #     raise HTTPException(status_code=401, detail=f"Authentication failed: {e}")
 
+# Lifespan event handler
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup
+    await startup_tasks()
+    yield
+    # Shutdown
+    pass
+
 # FastAPI 앱 초기화 (환경별 설정 적용)
 app = FastAPI(
     title="Bitcoin Trading Bot API",
     description="Enterprise Trading Bot with Multi-Environment Support",
     version="1.0.0",
-    debug=config.debug
+    debug=config.debug,
+    lifespan=lifespan
 )
 
 # Health Check Endpoint (Enhanced with Environment Info)
@@ -494,8 +505,7 @@ manager = ConnectionManager()
 
 
 # Start the background task when the app starts
-@app.on_event("startup")
-async def startup_event():
+async def startup_tasks():
     # Start the optimizer's periodic update task
     asyncio.create_task(run_periodic_updates())
     
@@ -507,6 +517,9 @@ async def startup_event():
     
     # Start the realtime trading engine
     await trading_engine.start_engine()
+    
+    # Initialize advanced instances
+    await initialize_advanced_instances()
 
     # Start monitoring for existing active strategies
     await startup_existing_strategies()
@@ -4147,12 +4160,10 @@ async def initialize_advanced_instances():
             from advanced.parameter_optimizer import ParameterOptimizer
             
             portfolio_manager_instance = PortfolioManager(
-                initial_capital=10000.0,
-                max_positions=3,
-                rebalance_interval=timedelta(hours=24)
+                total_capital=10000.0
             )
             
-            advanced_risk_manager_instance = AdvancedRiskManager(current_capital=10000.0)
+            advanced_risk_manager_instance = AdvancedRiskManager(initial_capital=10000.0)
             backtesting_engine_instance = BacktestingEngine()
             optimizer_instance = ParameterOptimizer()
             
@@ -4421,8 +4432,168 @@ async def advanced_websocket(websocket: WebSocket):
         logger.error(f"❌ Advanced WebSocket error: {e}")
         await websocket.close()
 
-# 앱 시작 시 고급 인스턴스 초기화
-@app.on_event("startup")
-async def startup_event():
-    await initialize_advanced_instances()
+# =============================================================================
+# Operations & Monitoring API Endpoints (Phase 15.5)
+# =============================================================================
+
+@app.get("/api/operations/performance")
+async def get_performance_metrics():
+    """실시간 성능 메트릭 조회"""
+    try:
+        # Return mock data for now
+        return {
+            "timestamp": datetime.now().isoformat(),
+            "system": {
+                "cpu_percent": 45.2,
+                "memory_percent": 62.1,
+                "memory_used_mb": 2048,
+                "disk_percent": 78.5,
+                "network_rx_mb": 12.5,
+                "network_tx_mb": 8.3
+            },
+            "application": {
+                "active_connections": 3,
+                "api_requests_per_minute": 45,
+                "response_time_avg_ms": 125,
+                "error_rate_percent": 0.2,
+                "uptime_hours": 48.5
+            },
+            "trading": {
+                "active_positions": 2,
+                "orders_per_minute": 3,
+                "latency_ms": 45,
+                "success_rate": 98.5,
+                "pnl_today": 125.50
+            }
+        }
+    except Exception as e:
+        logger.error(f"Performance metrics error: {e}")
+        raise HTTPException(status_code=500, detail=f"Performance metrics error: {e}")
+
+@app.get("/api/operations/alerts/active")
+async def get_active_alerts():
+    """활성 알림 조회"""
+    try:
+        # Return mock data for now
+        return {
+            "alerts": [
+                {
+                    "id": "alert_001",
+                    "type": "Position Risk",
+                    "level": "warning",
+                    "message": "BTC position showing high volatility",
+                    "timestamp": datetime.now().isoformat(),
+                    "resolved": False,
+                    "acknowledged": False,
+                    "metadata": {"symbol": "BTC-USDT", "volatility": "15.2%"}
+                }
+            ],
+            "stats": {
+                "total_alerts": 12,
+                "active_alerts": 3,
+                "critical_alerts": 0,
+                "warning_alerts": 3,
+                "resolved_today": 9,
+                "avg_resolution_time": 25.5
+            }
+        }
+    except Exception as e:
+        logger.error(f"Alerts error: {e}")
+        raise HTTPException(status_code=500, detail=f"Alerts error: {e}")
+
+@app.post("/api/operations/alerts/{alert_id}/acknowledge")
+async def acknowledge_alert(alert_id: str):
+    """알림 확인"""
+    try:
+        return {"message": f"Alert {alert_id} acknowledged"}
+    except Exception as e:
+        logger.error(f"Alert acknowledge error: {e}")
+        raise HTTPException(status_code=500, detail=f"Alert acknowledge error: {e}")
+
+@app.post("/api/operations/alerts/{alert_id}/resolve")
+async def resolve_alert(alert_id: str):
+    """알림 해결"""
+    try:
+        return {"message": f"Alert {alert_id} resolved"}
+    except Exception as e:
+        logger.error(f"Alert resolve error: {e}")
+        raise HTTPException(status_code=500, detail=f"Alert resolve error: {e}")
+
+@app.get("/api/portfolio/analytics")
+async def get_portfolio_analytics():
+    """포트폴리오 분석 데이터"""
+    try:
+        # Return mock data for now
+        return {
+            "current_value": 10567.50,
+            "total_pnl": 567.50,
+            "pnl_percentage": 5.67,
+            "sharpe_ratio": 1.85,
+            "max_drawdown": -8.5,
+            "win_rate": 68.5,
+            "total_trades": 145,
+            "risk_metrics": {
+                "var_95": -245.30,
+                "var_99": -385.20,
+                "cvar_95": -295.60,
+                "volatility": 12.5,
+                "beta": 0.85,
+                "correlation_btc": 0.78
+            },
+            "asset_allocation": [
+                {"symbol": "BTC-USDT", "weight": 45.2, "value": 4776.95},
+                {"symbol": "ETH-USDT", "weight": 25.3, "value": 2673.58},
+                {"symbol": "Others", "weight": 29.5, "value": 3116.97}
+            ],
+            "strategy_performance": [
+                {"name": "CCI Strategy", "pnl": 234.50, "trades": 45, "win_rate": 62.2},
+                {"name": "RSI+MACD", "pnl": 189.30, "trades": 38, "win_rate": 71.1},
+                {"name": "Bollinger Bands", "pnl": 143.70, "trades": 62, "win_rate": 64.5}
+            ]
+        }
+    except Exception as e:
+        logger.error(f"Portfolio analytics error: {e}")
+        raise HTTPException(status_code=500, detail=f"Portfolio analytics error: {e}")
+
+@app.get("/api/operations/performance/current")
+async def get_current_performance():
+    """현재 성능 데이터"""
+    return await get_performance_metrics()
+
+@app.get("/api/operations/system/overview") 
+async def get_system_overview():
+    """시스템 개요"""
+    return {
+        "status": "healthy",
+        "uptime": "2d 14h 35m",
+        "version": "1.0.0",
+        "environment": "development",
+        "services": {
+            "trading_engine": True,
+            "position_manager": True,
+            "risk_manager": True,
+            "operations": True
+        }
+    }
+
+@app.get("/api/analytics/portfolio")
+async def get_portfolio_analytics_alt():
+    """포트폴리오 분석 (대체 엔드포인트)"""
+    return await get_portfolio_analytics()
+
+@app.get("/api/analytics/risk")
+async def get_risk_analytics():
+    """리스크 분석"""
+    return {
+        "risk_level": "moderate",
+        "var_95": -245.30,
+        "var_99": -385.20,
+        "max_drawdown": -8.5,
+        "volatility": 12.5,
+        "correlation_metrics": {
+            "btc_correlation": 0.78,
+            "market_correlation": 0.65
+        }
+    }
+
 

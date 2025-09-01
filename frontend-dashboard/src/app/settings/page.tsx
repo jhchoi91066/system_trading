@@ -221,7 +221,6 @@ export default function SettingsPage() {
                   className="linear-select w-full"
                 >
                   <option value="en">English</option>
-                  <option value="ko">한국어</option>
                 </select>
               </div>
               
