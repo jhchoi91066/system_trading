@@ -1,11 +1,6 @@
 "use client";
 
-import { useTranslation } from 'react-i18next';
-import { useClientOnly } from '../hooks/useClientOnly';
-
 export function LocalizedNavigationLinks({ isMobile = false }: { isMobile?: boolean }) {
-  const { t } = useTranslation();
-  const isClient = useClientOnly();
 
   const navStyle = isMobile ? {
     display: 'flex',
@@ -39,68 +34,34 @@ export function LocalizedNavigationLinks({ isMobile = false }: { isMobile?: bool
     transition: 'all 0.2s ease'
   };
 
-  if (!isClient) {
-    return (
-      <nav style={navStyle}>
-        <a href="/" style={linkStyle}>Dashboard</a>
-        <a href="/strategies" style={linkStyle}>Strategies</a>
-        <a href="/backtest" style={linkStyle}>Backtest</a>
-        <a href="/trading-history" style={linkStyle}>Trading History</a>
-        <a href="/portfolio" style={linkStyle}>Portfolio</a>
-        <a href="/fund-management" style={linkStyle}>Fund Management</a>
-        <a href="/api-keys" style={linkStyle}>API Keys</a>
-        <a href="/operations" style={linkStyle}>Operations</a>
-        <a href="/alerts" style={linkStyle}>Alerts</a>
-        <a href="/monitoring" style={linkStyle}>Monitoring</a>
-        <a href="/notifications" style={linkStyle}>Notifications</a>
-        <a href="/settings" style={linkStyle}>Settings</a>
-      </nav>
-    );
-  }
-
   return (
     <nav style={navStyle}>
-      <a href="/" style={linkStyle}>{t('nav.dashboard')}</a>
-      <a href="/strategies" style={linkStyle}>{t('nav.strategies')}</a>
-      <a href="/backtest" style={linkStyle}>{t('nav.backtest')}</a>
-      <a href="/trading-history" style={linkStyle}>{t('nav.tradingHistory')}</a>
-      <a href="/portfolio" style={linkStyle}>{t('nav.portfolio')}</a>
-      <a href="/fund-management" style={linkStyle}>{t('nav.fundManagement')}</a>
-      <a href="/api-keys" style={linkStyle}>{t('nav.apiKeys')}</a>
-      <a href="/operations" style={linkStyle}>{t('nav.operations')}</a>
-      <a href="/alerts" style={linkStyle}>{t('nav.alerts')}</a>
-      <a href="/monitoring" style={linkStyle}>{t('nav.monitoring')}</a>
-      <a href="/notifications" style={linkStyle}>{t('nav.notifications')}</a>
-      <a href="/settings" style={linkStyle}>{t('common.settings')}</a>
+      <a href="/" style={linkStyle}>Dashboard</a>
+      <a href="/strategies" style={linkStyle}>Strategies</a>
+      <a href="/backtest" style={linkStyle}>Backtest</a>
+      <a href="/trading-history" style={linkStyle}>Trading History</a>
+      <a href="/portfolio" style={linkStyle}>Portfolio</a>
+      <a href="/fund-management" style={linkStyle}>Fund Management</a>
+      <a href="/api-keys" style={linkStyle}>API Keys</a>
+      <a href="/operations" style={linkStyle}>Operations</a>
+      <a href="/alerts" style={linkStyle}>Alerts</a>
+      <a href="/monitoring" style={linkStyle}>Monitoring</a>
+      <a href="/notifications" style={linkStyle}>Notifications</a>
+      <a href="/settings" style={linkStyle}>Settings</a>
     </nav>
   );
 }
 
 export function LocalizedAuthButtons() {
-  const { t } = useTranslation();
-  const isClient = useClientOnly();
-
-  if (!isClient) {
-    return (
-      <>
-        <button className="linear-button-secondary px-4 py-2">Sign In</button>
-        <button className="linear-button-primary px-4 py-2">Sign Up</button>
-      </>
-    );
-  }
-
   return (
     <>
-      <button className="linear-button-secondary px-4 py-2">{t('nav.signIn')}</button>
-      <button className="linear-button-primary px-4 py-2">{t('nav.signUp')}</button>
+      <button className="linear-button-secondary px-4 py-2">Sign In</button>
+      <button className="linear-button-primary px-4 py-2">Sign Up</button>
     </>
   );
 }
 
 export function LocalizedTitle() {
-  const { t } = useTranslation();
-  const isClient = useClientOnly();
-
   const titleStyle = {
     fontSize: '20px',
     color: '#ffffff',
@@ -108,12 +69,8 @@ export function LocalizedTitle() {
     fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
     margin: '0'
   };
-
-  if (!isClient) {
-    return <h1 style={titleStyle}>Bitcoin Trading</h1>;
-  }
   
   return (
-    <h1 style={titleStyle}>{t('dashboard.title')}</h1>
+    <h1 style={titleStyle}>Bitcoin Trading</h1>
   );
 }

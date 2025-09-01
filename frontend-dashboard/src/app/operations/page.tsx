@@ -227,7 +227,7 @@ export default function OperationsPage() {
               <div className="glass-light p-6 rounded-lg">
                 <h3 className="text-body font-medium text-white mb-4">Services Status</h3>
                 <div className="space-y-2">
-                  {Object.entries(systemOverview.services).map(([service, status]) => (
+                  {systemOverview.services ? Object.entries(systemOverview.services).map(([service, status]) => (
                     <div key={service} className="flex justify-between items-center">
                       <span className="text-small text-secondary">{service}:</span>
                       <div className="flex items-center space-x-2">
@@ -237,7 +237,9 @@ export default function OperationsPage() {
                         </span>
                       </div>
                     </div>
-                  ))}
+                  )) : (
+                    <div className="text-small text-secondary">No service data available</div>
+                  )}
                 </div>
               </div>
 
@@ -246,15 +248,15 @@ export default function OperationsPage() {
                 <div className="space-y-3">
                   <div className="flex justify-between">
                     <span className="text-small text-secondary">Total Alerts:</span>
-                    <span className="text-small text-white">{systemOverview.alerts_summary.active_alerts}</span>
+                    <span className="text-small text-white">{systemOverview.alerts_summary?.active_alerts || 0}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-small text-secondary">Critical:</span>
-                    <span className="text-small text-red-400">{systemOverview.alerts_summary.critical_alerts}</span>
+                    <span className="text-small text-red-400">{systemOverview.alerts_summary?.critical_alerts || 0}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-small text-secondary">Warnings:</span>
-                    <span className="text-small text-yellow-400">{systemOverview.alerts_summary.warning_alerts}</span>
+                    <span className="text-small text-yellow-400">{systemOverview.alerts_summary?.warning_alerts || 0}</span>
                   </div>
                 </div>
               </div>

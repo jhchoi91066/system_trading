@@ -20,10 +20,10 @@ export default function MobileExample() {
   const [showError, setShowError] = useState(false);
 
   const statsData = [
-    { label: "총 수익", value: "$1,234.56" },
-    { label: "거래 수", value: "42" },
-    { label: "승률", value: "68%" },
-    { label: "일 수익률", value: "+2.3%" }
+    { label: "Total Profit", value: "$1,234.56" },
+    { label: "Trade Count", value: "42" },
+    { label: "Win Rate", value: "68%" },
+    { label: "Daily Return", value: "+2.3%" }
   ];
 
   const tableData = [

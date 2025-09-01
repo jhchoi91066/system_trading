@@ -7,7 +7,7 @@ export default function MonitoringButton() {
 
   const handleMonitoring = () => {
     setIsMonitoring(!isMonitoring);
-    alert(isMonitoring ? '모니터링을 중지했습니다.' : 'BTC/USDT 모니터링을 시작했습니다.');
+    alert(isMonitoring ? 'Monitoring stopped.' : 'BTC/USDT monitoring started.');
   };
 
   return (
@@ -19,7 +19,7 @@ export default function MonitoringButton() {
           : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
       }`}
     >
-      {isMonitoring ? '모니터링 중지' : '모니터링 시작'}
+      {isMonitoring ? 'Stop Monitoring' : 'Start Monitoring'}
     </button>
   );
 }

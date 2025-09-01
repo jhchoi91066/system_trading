@@ -8,7 +8,6 @@ import {
   SignedOut,
   UserButton,
 } from "@clerk/nextjs";
-import LanguageSelector from "@/components/LanguageSelector";
 import { LocalizedNavigationLinks, LocalizedAuthButtons, LocalizedTitle } from "@/components/LocalizedNavigation";
 
 export default function NavigationHeader() {
@@ -62,7 +61,6 @@ export default function NavigationHeader() {
           </div>
         </div>
         <div style={rightSectionStyle}>
-          <LanguageSelector />
           <AuthButtons />
           {/* Hamburger Menu Button for Mobile */}
           <div style={{display: 'none'}}>

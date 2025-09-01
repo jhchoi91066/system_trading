@@ -9,9 +9,7 @@ import {
 } from "@clerk/nextjs";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
-import I18nProvider from "./providers/I18nProvider";
 import { WebSocketProvider } from '@/contexts/WebSocketProvider';
-import LanguageSelector from "@/components/LanguageSelector";
 import { LocalizedNavigationLinks, LocalizedAuthButtons, LocalizedTitle } from "@/components/LocalizedNavigation";
 import NavigationHeader from "@/components/NavigationHeader";
 
@@ -41,11 +39,9 @@ export default function RootLayout({
         <body
           className={`${geistSans.variable} ${geistMono.variable} antialiased`}
         >
-          <I18nProvider>
-            <WebSocketProvider>
-              <MainLayout>{children}</MainLayout>
-            </WebSocketProvider>
-          </I18nProvider>
+          <WebSocketProvider>
+            <MainLayout>{children}</MainLayout>
+          </WebSocketProvider>
         </body>
       </html>
     </ClerkProvider>

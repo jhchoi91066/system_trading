@@ -1,16 +1,13 @@
 "use client";
 
 import { useState, useEffect } from 'react';
-import { useTranslation } from 'react-i18next';
 import { useAuth } from '@clerk/nextjs';
 import TradingChart from '@/components/TradingChart'; // TradingChart 컴포넌트 임포트
 import { useWebSocket } from '@/contexts/WebSocketProvider';
-import { LocalizedPageTitle, LocalizedSectionTitle, LocalizedSelectLabel, LocalizedButton, LocalizedTableHeader } from '@/components/LocalizedPage';
 import MonitoringButton from '@/components/MonitoringButton';
 import NoSSR from '@/components/NoSSR';
 
 export default function Home() {
-  const { t } = useTranslation();
   const { getToken } = useAuth();
   const { data: websocketData } = useWebSocket();
   const [portfolioStats, setPortfolioStats] = useState<any>(null);
@@ -117,12 +114,12 @@ export default function Home() {
     try {
       const response = await fetchWithAuth('http://127.0.0.1:8000/demo/initialize', { method: 'POST' });
       if (response.ok) {
-        alert('🚀 Demo Trading 시작! BingX VST 모드로 가상 거래를 시작합니다.');
+        alert('🚀 Demo Trading Started! Virtual trading has started in BingX VST mode.');
       } else {
-        alert('데모 트레이딩 시작 실패.');
+        alert('Demo trading start failed.');
       }
     } catch (error) {
-      alert('데모 트레이딩 시작 중 오류가 발생했습니다.');
+      alert('Error occurred while starting demo trading.');
     }
   };
 
@@ -136,7 +133,7 @@ export default function Home() {
       
       if (response.ok) {
         const result = await response.json();
-        alert('🎮 BingX VST 실제 데모 주문 실행! BTC-USDT 소량 매수 주문이 VST 계정에 생성되었습니다.');
+        alert('🎮 BingX VST Demo Order Executed! Small BTC-USDT buy order created in VST account.');
         console.log('VST Order Result:', result);
       } else {
         const error = await response.json();
@@ -144,7 +141,7 @@ export default function Home() {
       }
     } catch (error) {
       console.error('VST Order Error:', error);
-      alert('VST 주문 실행 중 오류가 발생했습니다. API 키 설정을 확인해주세요.');
+      alert('Error occurred while executing VST order. Please check API key settings.');
     }
   };
 
@@ -153,14 +150,14 @@ export default function Home() {
       const response = await fetchWithAuth('http://127.0.0.1:8000/vst/status');
       if (response.ok) {
         const data = await response.json();
-        const status = data.connected ? '연결됨' : '연결 끊김';
+        const status = data.connected ? 'Connected' : 'Disconnected';
         const balance = data.account_info?.vst_balance || 0;
-        alert(`⚙️ BingX VST 상태: ${status}\n💰 VST 잔고: ${balance.toFixed(2)} USDT`);
+        alert(`⚙️ BingX VST Status: ${status}\n💰 VST Balance: ${balance.toFixed(2)} USDT`);
       } else {
-        alert('⚙️ BingX VST 상태를 확인할 수 없습니다.');
+        alert('⚙️ Unable to check BingX VST status.');
       }
     } catch (error) {
-      alert('⚙️ BingX VST 상태 확인 중 오류가 발생했습니다.');
+      alert('⚙️ Error occurred while checking BingX VST status.');
     }
   };
 
@@ -171,12 +168,12 @@ export default function Home() {
         const data = await response.json();
         const balance = data.account_info?.vst_balance || 0;
         const positions = data.account_info?.open_positions || 0;
-        alert(`💰 BingX VST 잔고: ${balance.toFixed(2)} USDT\n📊 활성 포지션: ${positions}개`);
+        alert(`💰 BingX VST Balance: ${balance.toFixed(2)} USDT\n📊 Active Positions: ${positions}`);
       } else {
-        alert('💰 VST 잔고를 확인할 수 없습니다.');
+        alert('💰 Unable to check VST balance.');
       }
     } catch (error) {
-      alert('💰 VST 잔고 확인 중 오류가 발생했습니다.');
+      alert('💰 Error occurred while checking VST balance.');
     }
   };
 
@@ -211,10 +208,10 @@ export default function Home() {
       }
       const data = await response.json();
       setBacktestResults(data);
-      alert('백테스트가 완료되었습니다! 결과를 확인하세요.');
+      alert('Backtest completed! Check the results.');
     } catch (e: any) {
       setFetchError(`Failed to run backtest: ${e.message}`);
-      alert(`백테스트 실행 중 오류가 발생했습니다: ${e.message}`);
+      alert(`Error occurred during backtest execution: ${e.message}`);
     } finally {
       setLoadingBacktest(false);
     }
@@ -234,14 +231,14 @@ export default function Home() {
       });
       if (response.ok) {
         const data = await response.json();
-        alert(`전략 활성화 성공: ${data.message}`);
-        fetchActiveStrategies(); // 활성화된 전략 목록 새로고침
+        alert(`Strategy activation successful: ${data.message}`);
+        fetchActiveStrategies(); // Refresh active strategies list
       } else {
         const errorData = await response.json();
-        alert(`전략 활성화 실패: ${errorData.detail || response.statusText}`);
+        alert(`Strategy activation failed: ${errorData.detail || response.statusText}`);
       }
     } catch (error: any) {
-      alert(`전략 활성화 중 오류가 발생했습니다: ${error.message}`);
+      alert(`Error occurred during strategy activation: ${error.message}`);
     }
   };
 
@@ -379,7 +376,7 @@ export default function Home() {
   return (
     <div className="yw-main-content">
       <div className="max-w-7xl mx-auto">
-        <h1 className="yw-h1">비트코인 트레이딩</h1>
+        <h1 className="yw-h1">Bitcoin Trading</h1>
 
         {/* Portfolio Overview */}
         <div className="yw-card mb-8">
@@ -471,10 +468,10 @@ export default function Home() {
         {/* CCI Indicator Display */}
         <div className="yw-card mb-8">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="yw-h2">CCI 지표 & 매매 신호</h2>
+            <h2 className="yw-h2">CCI Indicator & Trading Signals</h2>
             <div className="flex items-center gap-4">
               <div className="flex items-center gap-2">
-                <label className="text-sm font-medium text-black">기간:</label>
+                <label className="text-sm font-medium text-black">Period:</label>
                 <select 
                   value={cciPeriod}
                   onChange={(e) => setCciPeriod(Number(e.target.value))}
@@ -486,13 +483,13 @@ export default function Home() {
                 </select>
               </div>
               <div className="flex items-center gap-2">
-                <label className="text-sm font-medium text-black">계산방법:</label>
+                <label className="text-sm font-medium text-black">Calculation Method:</label>
                 <select 
                   value={cciMethod}
                   onChange={(e) => setCciMethod(e.target.value)}
                   className="bg-white border border-gray-300 text-black text-sm rounded-lg p-2"
                 >
-                  <option value="standard">표준</option>
+                  <option value="standard">Standard</option>
                   <option value="talib">TA-Lib</option>
                 </select>
               </div>
@@ -501,7 +498,7 @@ export default function Home() {
                 disabled={loadingCci}
                 className="bg-purple-600 hover:bg-purple-700 text-black font-medium py-2 px-4 rounded-lg transition-colors duration-200"
               >
-                {loadingCci ? '로딩 중...' : '🔄 CCI 업데이트'}
+                {loadingCci ? 'Loading...' : '🔄 Update CCI'}
               </button>
             </div>
           </div>
@@ -509,7 +506,7 @@ export default function Home() {
           {cciData && (
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
               <div className="bg-gray-50 p-4 rounded-lg">
-                <h3 className="font-semibold text-sm mb-2">현재 CCI 값</h3>
+                <h3 className="font-semibold text-sm mb-2">Current CCI Value</h3>
                 <div className="text-2xl font-bold mb-1">
                   {cciData.cci.current_value?.toFixed(2) || 'N/A'}
                 </div>
@@ -522,7 +519,7 @@ export default function Home() {
               </div>
               
               <div className="bg-gray-50 p-4 rounded-lg">
-                <h3 className="font-semibold text-sm mb-2">매매 신호</h3>
+                <h3 className="font-semibold text-sm mb-2">Trading Signal</h3>
                 <div className={`text-2xl font-bold mb-1 ${
                   cciData.signal.current === 1 ? 'text-green-600' :
                   cciData.signal.current === -1 ? 'text-red-600' : 'text-gray-600'
@@ -530,16 +527,16 @@ export default function Home() {
                   {cciData.signal.interpretation}
                 </div>
                 <div className="text-sm text-gray-500">
-                  현재가: ${cciData.current_price?.toFixed(2)}
+                  Current Price: ${cciData.current_price?.toFixed(2)}
                 </div>
               </div>
               
               <div className="bg-gray-50 p-4 rounded-lg">
-                <h3 className="font-semibold text-sm mb-2">임계값 설정</h3>
+                <h3 className="font-semibold text-sm mb-2">Threshold Settings</h3>
                 <div className="text-sm space-y-1">
-                  <div>매수 임계값: {cciData.cci.buy_threshold}</div>
-                  <div>매도 임계값: {cciData.cci.sell_threshold}</div>
-                  <div>윈도우: {cciData.cci.window}기간</div>
+                  <div>Buy Threshold: {cciData.cci.buy_threshold}</div>
+                  <div>Sell Threshold: {cciData.cci.sell_threshold}</div>
+                  <div>Window: {cciData.cci.window} periods</div>
                 </div>
               </div>
             </div>
@@ -547,7 +544,7 @@ export default function Home() {
           
           {!cciData && !loadingCci && (
             <div className="text-center py-8 text-gray-500">
-              CCI 지표 데이터를 불러오려면 위의 업데이트 버튼을 클릭하세요.
+              Click the update button above to load CCI indicator data.
             </div>
           )}
         </div>
@@ -557,7 +554,7 @@ export default function Home() {
           <h2 className="yw-h2">BTC/USDT Chart</h2>
           <div className="mt-4">
             <div className="flex items-center justify-between mb-3">
-              <h3 className="font-semibold text-sm">시간프레임 선택</h3>
+              <h3 className="font-semibold text-sm">Select Timeframe</h3>
               <MonitoringButton />
             </div>
             <div className="flex flex-wrap gap-2">
@@ -583,10 +580,10 @@ export default function Home() {
 
         {/* Backtest Settings */}
         <div className="yw-card mb-8">
-          <h2 className="yw-h2">백테스트 설정</h2>
+          <h2 className="yw-h2">Backtest Settings</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">거래소</label>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Exchange</label>
               <select name="exchange_id" className="w-full p-2 border border-gray-300 rounded-md" value={backtestParams.exchange_id} onChange={handleBacktestChange}>
                 {loadingExchanges ? (
                   <option>Loading exchanges...</option>
@@ -598,7 +595,7 @@ export default function Home() {
               </select>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">심볼</label>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Symbol</label>
               <select name="symbol" className="w-full p-2 border border-gray-300 rounded-md" value={backtestParams.symbol} onChange={handleBacktestChange}>
                 {loadingSymbols ? (
                   <option>Loading symbols...</option>
@@ -610,26 +607,26 @@ export default function Home() {
               </select>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">시간프레임</label>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Timeframe</label>
               <select name="timeframe" className="w-full p-2 border border-gray-300 rounded-md" value={backtestParams.timeframe} onChange={handleBacktestChange}>
-                <option value="1m">1분</option>
-                <option value="5m">5분</option>
-                <option value="15m">15분</option>
-                <option value="1h">1시간</option>
-                <option value="4h">4시간</option>
-                <option value="1d">1일</option>
+                <option value="1m">1 minute</option>
+                <option value="5m">5 minutes</option>
+                <option value="15m">15 minutes</option>
+                <option value="1h">1 hour</option>
+                <option value="4h">4 hours</option>
+                <option value="1d">1 day</option>
               </select>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">데이터 개수</label>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Data Count</label>
               <input type="number" name="limit" className="w-full p-2 border border-gray-300 rounded-md" min="50" max="1000" value={backtestParams.limit} onChange={handleBacktestChange} />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">CCI 기간</label>
+              <label className="block text-sm font-medium text-gray-700 mb-2">CCI Period</label>
               <input type="number" name="window" className="w-full p-2 border border-gray-300 rounded-md" min="5" max="50" value={backtestParams.window} onChange={handleBacktestChange} />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">초기 자본</label>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Initial Capital</label>
               <input type="number" name="initial_capital" className="w-full p-2 border border-gray-300 rounded-md" min="1000" value={backtestParams.initial_capital} onChange={handleBacktestChange} />
             </div>
           </div>
@@ -638,15 +635,15 @@ export default function Home() {
             disabled={loadingBacktest}
             className="w-full bg-blue-500 hover:bg-blue-600 text-black py-2 px-4 rounded-md disabled:opacity-50"
           >
-            {loadingBacktest ? '백테스트 실행 중...' : '백테스트 실행'}
+            {loadingBacktest ? 'Running Backtest...' : 'Run Backtest'}
           </button>
           {backtestResults && (
             <div className="mt-4 p-4 bg-gray-100 rounded-md">
-              <h3 className="text-lg font-semibold mb-2">백테스트 결과</h3>
-              <p>최종 자본: ${backtestResults.final_capital?.toFixed(2)}</p>
-              <p>총 수익률: {backtestResults.return_rate?.toFixed(2)}%</p>
-              <p>총 거래 수: {backtestResults.total_trades}</p>
-              <p>승률: {backtestResults.win_rate?.toFixed(2)}%</p>
+              <h3 className="text-lg font-semibold mb-2">Backtest Results</h3>
+              <p>Final Capital: ${backtestResults.final_capital?.toFixed(2)}</p>
+              <p>Total Return: {backtestResults.return_rate?.toFixed(2)}%</p>
+              <p>Total Trades: {backtestResults.total_trades}</p>
+              <p>Win Rate: {backtestResults.win_rate?.toFixed(2)}%</p>
             </div>
           )}
         </div>
